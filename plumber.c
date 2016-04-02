@@ -138,6 +138,13 @@ static void PLUMBER_init(int argc, char** argv)
                 fprintf(stderr, "PLUMBER: sendmatrix memory allocation did not succeed for %d processes\n", size);
                 PMPI_Abort(MPI_COMM_WORLD, 1);
             }
+
+            for (int i=0; i<size; i++) {
+                plumber_sendmatrix_count[i] = 0;
+                plumber_sendmatrix_timer[i] = 0.0;
+                plumber_sendmatrix_bytes[i] = 0;
+            }
+
         }
     }
 }
@@ -196,7 +203,7 @@ static void PLUMBER_finalize(int collective)
             int len;
             MPI_Get_processor_name(procname, &len);
             fprintf(rankfile, "MPI_Get_processor_name = %s\n", procname);
-            fprintf(rankfile, "%32s %10s %30s %20s %s\n", "function", "calls", "time", "bytes", "(totals)");
+            fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 if (plumber_commtype_count[i] > 0) {
                     fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
@@ -215,7 +222,7 @@ static void PLUMBER_finalize(int collective)
                 fprintf(stderr, "PLUMBER: fopen of matrixfile %s did not succeed\n", matrixfilepath);
             } else {
                 fprintf(matrixfile, "PLUMBER matrix for process %d\n", rank);
-                fprintf(matrixfile, "%10s %10s %30s %20s %s\n", "target", "calls", "time", "bytes", "(totals)");
+                fprintf(matrixfile, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
                 for (int i=0; i<size; i++) {
                     if (plumber_sendmatrix_count[i] > 0) {
                         fprintf(rankfile, "%10d %20llu %30.14f %20llu\n",
@@ -254,11 +261,12 @@ static void PLUMBER_finalize(int collective)
                     fprintf(stderr, "PLUMBER: fopen of summaryfile %s did not succeed\n", summaryfilepath);
                 } else {
                     fprintf(summaryfile, "PLUMBER summary\n");
-                    fprintf(summaryfile, "program invocation was: ");
+                    fprintf(summaryfile, "program invocation was:");
                     for (int i=0; i<plumber_argc; i++) {
-                        fprintf(summaryfile, "%s", plumber_argv[i]);
+                        fprintf(summaryfile, " %s", plumber_argv[i]);
                     }
-                    fprintf(rankfile, "%32s %10s %30s %20s %s\n", "function", "calls", "time", "bytes", "(totals)");
+                    fprintf(summaryfile, "\n");
+                    fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
                     for (int i=0; i<MAX_COMMTYPE; i++) {
                         if (total_commtype_count[i] > 0) {
                             fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
