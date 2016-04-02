@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 
 #include <mpi.h>
 
@@ -8,10 +9,14 @@
  * internal data
  ********************************************/
 
-int plumber_profiling_active;
-int plumber_sendmatrix_active;
+int plumber_profiling_active = 0;
+int plumber_sendmatrix_active = 0;
+
+int plumber_argc;
+char** plumber_argv;
 
 typedef enum {
+    /* sends */
     SEND          = 0,
     BSEND         = 1,
     SSEND         = 2,
@@ -20,11 +25,21 @@ typedef enum {
     IBSEND        = 5,
     ISSEND        = 6,
     IRSEND        = 7,
+    /* receives */
     RECV          = 8,
     IRECV         = 9,
     MRECV         = 10,
     IMRECV        = 11,
-    MAX_P2P       = 12,
+    /* request completion */
+    WAIT          = 12,
+    WAITANY       = 13,
+    WAITSOME      = 14,
+    WAITALL       = 15,
+    TEST          = 16,
+    TESTANY       = 17,
+    TESTSOME      = 18,
+    TESTALL       = 19,
+    /* collectives */
     BARRIER       = 32,
     BCAST         = 33,
     REDUCE        = 34,
@@ -43,6 +58,44 @@ typedef enum {
     MAX_COMMTYPE  = 47
 } plumber_commtype_t;
 
+char plumber_commtype_names[MAX_COMMTYPE][32] = {
+"MPI_Send",
+"MPI_Bsend",
+"MPI_Ssend",
+"MPI_Rsend",
+"MPI_Isend",
+"MPI_Ibsend",
+"MPI_Issend",
+"MPI_Irsend",
+"MPI_Recv",
+"MPI_Irecv",
+"MPI_Mrecv",
+"MPI_Imrecv",
+"MPI_Wait",
+"MPI_Waitany",
+"MPI_Waitsome",
+"MPI_Waitall",
+"MPI_Test",
+"MPI_Testany",
+"MPI_Testsome",
+"MPI_Testall",
+"MPI_Barrier",
+"MPI_Bcast",
+"MPI_Reduce",
+"MPI_Allreduce",
+"MPI_Alltoall",
+"MPI_Alltoallv",
+"MPI_Gather",
+"MPI_Allgather",
+"MPI_Scatter",
+"MPI_Gatherv",
+"MPI_Allgatherv",
+"MPI_Scatterv",
+"MPI_Reduce_scatter",
+"MPI_Reduce_scatter_block",
+"MPI_Alltoallw"
+};
+
 uint64_t plumber_commtype_count[MAX_COMMTYPE];
 double   plumber_commtype_timer[MAX_COMMTYPE];
 uint64_t plumber_commtype_bytes[MAX_COMMTYPE];
@@ -56,11 +109,15 @@ uint64_t * plumber_sendmatrix_bytes;
  * internal functions
  ********************************************/
 
-static void PLUMBER_init(void)
+static void PLUMBER_init(int argc, char** argv)
 {
     plumber_profiling_active = 1;
 
     if (plumber_profiling_active) {
+
+        plumber_argc = argc;
+        plumber_argv = argv;
+
         for (int i=0; i<MAX_COMMTYPE; i++) {
             plumber_commtype_count[i] = 0;
             plumber_commtype_timer[i] = 0.0;
@@ -87,16 +144,135 @@ static void PLUMBER_init(void)
 
 static void PLUMBER_finalize(int collective)
 {
-    if (collective);
-
     if (plumber_profiling_active) {
 
+        int rank, size;
+        PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
+        PMPI_Comm_size(MPI_COMM_WORLD, &size);
+
+        char summaryfilepath[255];
+        char rankfilepath[255];
+        char matrixfilepath[255];
+
+        char * prefix = getenv("PLUMBER_PREFIX");
+        if (prefix != NULL) {
+            strncpy(summaryfilepath, prefix, 255);
+            strncpy(rankfilepath,    prefix, 255);
+            strncpy(matrixfilepath,  prefix, 255);
+        } else {
+            char plumber_program_name[255];
+            if (plumber_argc>0) {
+                strncpy(plumber_program_name, plumber_argv[0], 255);
+            } else {
+                strncpy(plumber_program_name, "unknown", 255);
+            }
+            /* append plumber_program_name with timestamp to be unique... */
+            strncpy(summaryfilepath, plumber_program_name, 255);
+            strncpy(rankfilepath,    plumber_program_name, 255);
+            strncpy(matrixfilepath,  plumber_program_name, 255);
+        }
+
+        /* 2^31 = 2147483648 requires 10 digits */
+        char rankstring[12] = {0};
+        sprintf(rankstring, "%d", rank);
+
+        strcat(summaryfilepath, "plumber.summary.");
+        strcat(summaryfilepath, rankstring);
+
+        strcat(rankfilepath, "plumber.profile.");
+        strcat(rankfilepath, rankstring);
+
+        strcat(matrixfilepath, "plumber.matrix.");
+        strcat(matrixfilepath, rankstring);
+
+        /* this will blast existing files with the same name.
+         * we should test for this case and not overwrite them. */
+        FILE * rankfile = fopen(rankfilepath, "w");
+        if ( rankfile==NULL ) {
+            fprintf(stderr, "PLUMBER: fopen of rankfile %s did not succeed\n", rankfilepath);
+        } else {
+            fprintf(rankfile, "PLUMBER profile for process %d\n", rank);
+            char procname[MPI_MAX_PROCESSOR_NAME] = {0};
+            int len;
+            MPI_Get_processor_name(procname, &len);
+            fprintf(rankfile, "MPI_Get_processor_name = %s\n", procname);
+            fprintf(rankfile, "%32s %10s %30s %20s %s\n", "function", "calls", "time", "bytes", "(totals)");
+            for (int i=0; i<MAX_COMMTYPE; i++) {
+                if (plumber_commtype_count[i] > 0) {
+                    fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
+                            plumber_commtype_names[i],
+                            plumber_commtype_count[i],
+                            plumber_commtype_timer[i],
+                            plumber_commtype_bytes[i]);
+                }
+            }
+            fclose(rankfile);
+        }
 
         if (plumber_sendmatrix_active) {
+            FILE * matrixfile = fopen(matrixfilepath, "w");
+            if ( matrixfile==NULL ) {
+                fprintf(stderr, "PLUMBER: fopen of matrixfile %s did not succeed\n", matrixfilepath);
+            } else {
+                fprintf(matrixfile, "PLUMBER matrix for process %d\n", rank);
+                fprintf(matrixfile, "%10s %10s %30s %20s %s\n", "target", "calls", "time", "bytes", "(totals)");
+                for (int i=0; i<size; i++) {
+                    if (plumber_sendmatrix_count[i] > 0) {
+                        fprintf(rankfile, "%10d %20llu %30.14f %20llu\n",
+                                i,
+                                plumber_sendmatrix_count[i],
+                                plumber_sendmatrix_timer[i],
+                                plumber_sendmatrix_bytes[i]);
+                    }
+                }
+                fclose(matrixfile);
+            }
+
             free(plumber_sendmatrix_count);
             free(plumber_sendmatrix_timer);
             free(plumber_sendmatrix_bytes);
         }
+
+        if (collective) {
+            /* reduce to get totals */
+            uint64_t total_commtype_count[MAX_COMMTYPE];
+            double   total_commtype_timer[MAX_COMMTYPE];
+            uint64_t total_commtype_bytes[MAX_COMMTYPE];
+            for (int i=0; i<MAX_COMMTYPE; i++) {
+                PMPI_Reduce(&(plumber_commtype_count[i]), &(total_commtype_count[i]),
+                            1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+                PMPI_Reduce(&(plumber_commtype_timer[i]), &(total_commtype_timer[i]),
+                            1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+                PMPI_Reduce(&(plumber_commtype_bytes[i]), &(total_commtype_bytes[i]),
+                            1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+            }
+
+            /* write file from rank 0 */
+            if (rank==0) {
+                FILE * summaryfile = fopen(summaryfilepath, "w");
+                if ( summaryfile==NULL ) {
+                    fprintf(stderr, "PLUMBER: fopen of summaryfile %s did not succeed\n", summaryfilepath);
+                } else {
+                    fprintf(summaryfile, "PLUMBER summary\n");
+                    fprintf(summaryfile, "program invocation was: ");
+                    for (int i=0; i<plumber_argc; i++) {
+                        fprintf(summaryfile, "%s", plumber_argv[i]);
+                    }
+                    fprintf(rankfile, "%32s %10s %30s %20s %s\n", "function", "calls", "time", "bytes", "(totals)");
+                    for (int i=0; i<MAX_COMMTYPE; i++) {
+                        if (total_commtype_count[i] > 0) {
+                            fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
+                                    plumber_commtype_names[i],
+                                    total_commtype_count[i],
+                                    total_commtype_timer[i],
+                                    total_commtype_bytes[i]);
+                        }
+                    }
+                    fclose(summaryfile);
+                }
+            }
+        }
+
     }
 }
 
@@ -126,19 +302,29 @@ static double PLUMBER_wtime(void)
 int MPI_Init(int * argc, char** * argv)
 {
     int rc = PMPI_Init(argc, argv);
-    PLUMBER_init();
+    if (argc != NULL && argv != NULL) {
+        PLUMBER_init(*argc, *argv);
+    } else {
+        PLUMBER_init(0,NULL);
+    }
     return rc;
 }
 
 int MPI_Init_thread(int * argc, char** * argv, int requested, int * provided)
 {
     int rc = PMPI_Init_thread(argc, argv, requested, provided);
-    PLUMBER_init();
+    if (argc != NULL && argv != NULL) {
+        PLUMBER_init(*argc, *argv);
+    } else {
+        PLUMBER_init(0,NULL);
+    }
     return rc;
 }
 
 int MPI_Abort(MPI_Comm comm, int errorcode)
 {
+    /* need to setup error handler to dump logs from all ranks
+     * when job is aborted... */
     PLUMBER_finalize(0); /* noncollective version */
     return PMPI_Abort(comm, errorcode);
 }
@@ -660,13 +846,115 @@ int MPI_Imrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message
     return rc;
 }
 
-/*
-int PMPI_Wait(MPI_Request *request, MPI_Status *status);
-int PMPI_Test(MPI_Request *request, int *flag, MPI_Status *status);
-int PMPI_Waitany(int count, MPI_Request array_of_requests[], int *indx, MPI_Status *status);
-int PMPI_Testany(int count, MPI_Request array_of_requests[], int *indx, int *flag, MPI_Status *status);
-int PMPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status array_of_statuses[]);
-int PMPI_Testall(int count, MPI_Request array_of_requests[], int *flag, MPI_Status array_of_statuses[]);
-int PMPI_Waitsome(int incount, MPI_Request array_of_requests[], int *outcount, int array_of_indices[], MPI_Status array_of_statuses[]);
-int PMPI_Testsome(int incount, MPI_Request array_of_requests[], int *outcount, int array_of_indices[], MPI_Status array_of_statuses[]);
-*/
+int PMPI_Wait(MPI_Request *request, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Wait(request, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[WAIT] += 1;
+        plumber_commtype_timer[WAIT] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Test(request, flag, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[TEST] += 1;
+        plumber_commtype_timer[TEST] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Waitany(int count, MPI_Request requests[], int *index, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Waitany(count, requests, index, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[WAITANY] += 1;
+        plumber_commtype_timer[WAITANY] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Testany(int count, MPI_Request requests[], int *index, int *flag, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Testany(count, requests, index, flag, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[TESTANY] += 1;
+        plumber_commtype_timer[TESTANY] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Waitall(int count, MPI_Request requests[], MPI_Status statuses[])
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Waitall(count, requests, statuses);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[WAITALL] += 1;
+        plumber_commtype_timer[WAITALL] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Testall(int count, MPI_Request requests[], int *flag, MPI_Status statuses[])
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Testall(count, requests, flag, statuses);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[TESTALL] += 1;
+        plumber_commtype_timer[TESTALL] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Waitsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Waitsome(incount, requests, outcount, indices, statuses);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[WAITSOME] += 1;
+        plumber_commtype_timer[WAITSOME] += (t1-t0);
+    }
+
+    return rc;
+}
+
+int PMPI_Testsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Testsome(incount, requests, outcount, indices, statuses);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        plumber_commtype_count[TESTSOME] += 1;
+        plumber_commtype_timer[TESTSOME] += (t1-t0);
+    }
+
+    return rc;
+}
+
