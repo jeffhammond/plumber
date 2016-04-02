@@ -8,5 +8,14 @@ all: plumber.o
 plumber.o : plumber.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
+test : test.c plumber.o
+	$(CC) $(CFLAGS) $< plumber.o -o $@
+
+check: test
+	mpirun -n 4 ./test
+
 clean:
 	-rm -f plumber.o
+	-rm -f test
+	-rm -rf test.dSYM
+

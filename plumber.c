@@ -40,22 +40,22 @@ typedef enum {
     TESTSOME      = 18,
     TESTALL       = 19,
     /* collectives */
-    BARRIER       = 32,
-    BCAST         = 33,
-    REDUCE        = 34,
-    ALLREDUCE     = 35,
-    ALLTOALL      = 36,
-    ALLTOALLV     = 37,
-    GATHER        = 38,
-    ALLGATHER     = 39,
-    SCATTER       = 40,
-    GATHERV       = 41,
-    ALLGATHERV    = 42,
-    SCATTERV      = 43,
-    REDSCAT       = 44,
-    REDSCATB      = 45,
-    ALLTOALLW     = 46,
-    MAX_COMMTYPE  = 47
+    BARRIER       = 20,
+    BCAST         = 21,
+    REDUCE        = 22,
+    ALLREDUCE     = 23,
+    ALLTOALL      = 24,
+    ALLTOALLV     = 25,
+    GATHER        = 26,
+    ALLGATHER     = 27,
+    SCATTER       = 28,
+    GATHERV       = 29,
+    ALLGATHERV    = 30,
+    SCATTERV      = 31,
+    REDSCAT       = 32,
+    REDSCATB      = 33,
+    ALLTOALLW     = 34,
+    MAX_COMMTYPE  = 35
 } plumber_commtype_t;
 
 char plumber_commtype_names[MAX_COMMTYPE][32] = {
@@ -176,13 +176,13 @@ static void PLUMBER_finalize(int collective)
         char rankstring[12] = {0};
         sprintf(rankstring, "%d", rank);
 
-        strcat(summaryfilepath, "plumber.summary.");
+        strcat(summaryfilepath, ".plumber.summary.");
         strcat(summaryfilepath, rankstring);
 
-        strcat(rankfilepath, "plumber.profile.");
+        strcat(rankfilepath, ".plumber.profile.");
         strcat(rankfilepath, rankstring);
 
-        strcat(matrixfilepath, "plumber.matrix.");
+        strcat(matrixfilepath, ".plumber.matrix.");
         strcat(matrixfilepath, rankstring);
 
         /* this will blast existing files with the same name.
