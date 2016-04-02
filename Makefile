@@ -1,6 +1,7 @@
 CC      = mpicc
 CFLAGS  = -std=c99
-CFLAGS += -Wall -Wextra -Werror
+CFLAGS += -Wall -Wextra -Wunused -Wformat
+CFLAGS += -Werror
 
 all: plumber.o
 

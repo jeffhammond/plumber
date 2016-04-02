@@ -8,28 +8,49 @@
  * internal data
  ********************************************/
 
-typedef enum {
-    BARRIER    = 0,
-    BCAST      = 1,
-    REDUCE     = 2,
-    ALLREDUCE  = 3,
-    ALLTOALL   = 4,
-    ALLTOALLV  = 5,
-    GATHER     = 6,
-    ALLGATHER  = 7,
-    SCATTER    = 8,
-    GATHERV    = 9,
-    ALLGATHERV = 10,
-    SCATTERV   = 11,
-    REDSCAT    = 12,
-    REDSCATB   = 13,
-    ALLTOALLW  = 14,
-    MAX_COLL   = 15
-} plumber_collective_t;
+int plumber_profiling_active;
+int plumber_sendmatrix_active;
 
-uint64_t plumber_collective_count[MAX_COLL];
-double   plumber_collective_timer[MAX_COLL];
-uint64_t plumber_collective_bytes[MAX_COLL];
+typedef enum {
+    SEND          = 0,
+    BSEND         = 1,
+    SSEND         = 2,
+    RSEND         = 3,
+    ISEND         = 4,
+    IBSEND        = 5,
+    ISSEND        = 6,
+    IRSEND        = 7,
+    RECV          = 8,
+    IRECV         = 9,
+    MRECV         = 10,
+    IMRECV        = 11,
+    MAX_P2P       = 12,
+    BARRIER       = 32,
+    BCAST         = 33,
+    REDUCE        = 34,
+    ALLREDUCE     = 35,
+    ALLTOALL      = 36,
+    ALLTOALLV     = 37,
+    GATHER        = 38,
+    ALLGATHER     = 39,
+    SCATTER       = 40,
+    GATHERV       = 41,
+    ALLGATHERV    = 42,
+    SCATTERV      = 43,
+    REDSCAT       = 44,
+    REDSCATB      = 45,
+    ALLTOALLW     = 46,
+    MAX_COMMTYPE  = 47
+} plumber_commtype_t;
+
+uint64_t plumber_commtype_count[MAX_COMMTYPE];
+double   plumber_commtype_timer[MAX_COMMTYPE];
+uint64_t plumber_commtype_bytes[MAX_COMMTYPE];
+
+/* dynamically allocated due to O(nproc) */
+uint64_t * plumber_sendmatrix_count;
+double   * plumber_sendmatrix_timer;
+uint64_t * plumber_sendmatrix_bytes;
 
 /********************************************
  * internal functions
@@ -37,15 +58,46 @@ uint64_t plumber_collective_bytes[MAX_COLL];
 
 static void PLUMBER_init(void)
 {
-    for (int i=0; i<MAX_COLL; i++) {
-        plumber_collective_count[i] = 0;
-        plumber_collective_timer[i] = 0.0;
-        plumber_collective_bytes[i] = 0;
+    plumber_profiling_active = 1;
+
+    if (plumber_profiling_active) {
+        for (int i=0; i<MAX_COMMTYPE; i++) {
+            plumber_commtype_count[i] = 0;
+            plumber_commtype_timer[i] = 0.0;
+            plumber_commtype_bytes[i] = 0;
+        }
+
+        plumber_sendmatrix_active = 1;
+
+        if (plumber_sendmatrix_active) {
+            int size;
+            PMPI_Comm_size(MPI_COMM_WORLD, &size);
+
+            plumber_sendmatrix_count = malloc(size * sizeof(uint64_t));
+            plumber_sendmatrix_timer = malloc(size * sizeof(double));
+            plumber_sendmatrix_bytes = malloc(size * sizeof(uint64_t));
+
+            if (plumber_sendmatrix_count == NULL || plumber_sendmatrix_timer == NULL || plumber_sendmatrix_bytes == NULL) {
+                fprintf(stderr, "PLUMBER: sendmatrix memory allocation did not succeed for %d processes\n", size);
+                PMPI_Abort(MPI_COMM_WORLD, 1);
+            }
+        }
     }
 }
 
 static void PLUMBER_finalize(int collective)
 {
+    if (collective);
+
+    if (plumber_profiling_active) {
+
+
+        if (plumber_sendmatrix_active) {
+            free(plumber_sendmatrix_count);
+            free(plumber_sendmatrix_timer);
+            free(plumber_sendmatrix_bytes);
+        }
+    }
 }
 
 static size_t PLUMBER_count_dt_to_bytes(int count, MPI_Datatype datatype)
@@ -104,8 +156,10 @@ int MPI_Barrier(MPI_Comm comm)
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Barrier(comm);
     double t1 = PLUMBER_wtime();
-    plumber_collective_count[BARRIER] += 1;
-    plumber_collective_timer[BARRIER] += (t1-t0);
+    if (plumber_profiling_active) {
+        plumber_commtype_count[BARRIER] += 1;
+        plumber_commtype_timer[BARRIER] += (t1-t0);
+    }
     return rc;
 }
 
@@ -115,12 +169,13 @@ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm
     int rc = PMPI_Bcast(buffer, count, datatype, root, comm);
     double t1 = PLUMBER_wtime();
 
-    size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
 
-    plumber_collective_count[BCAST] += 1;
-    plumber_collective_timer[BCAST] += (t1-t0);
-    plumber_collective_bytes[BCAST] += bytes;
-
+        plumber_commtype_count[BCAST] += 1;
+        plumber_commtype_timer[BCAST] += (t1-t0);
+        plumber_commtype_bytes[BCAST] += bytes;
+    }
     return rc;
 }
 
@@ -131,18 +186,20 @@ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = PLUMBER_count_dt_to_bytes(sendcount, sendtype);
-    if (rank==root) {
-        bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        size_t bytes = PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        if (rank==root) {
+            bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        }
+
+        plumber_commtype_count[GATHER] += 1;
+        plumber_commtype_timer[GATHER] += (t1-t0);
+        plumber_commtype_bytes[GATHER] += bytes;
     }
-
-    plumber_collective_count[GATHER] += 1;
-    plumber_collective_timer[GATHER] += (t1-t0);
-    plumber_collective_bytes[GATHER] += bytes;
 
     return rc;
 }
@@ -154,20 +211,22 @@ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, root, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = PLUMBER_count_dt_to_bytes(sendcount, sendtype);
-    if (rank==root) {
-        for (int i=0; i<size; i++) {
-            bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+        size_t bytes = PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        if (rank==root) {
+            for (int i=0; i<size; i++) {
+                bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+            }
         }
-    }
 
-    plumber_collective_count[GATHERV] += 1;
-    plumber_collective_timer[GATHERV] += (t1-t0);
-    plumber_collective_bytes[GATHERV] += bytes;
+        plumber_commtype_count[GATHERV] += 1;
+        plumber_commtype_timer[GATHERV] += (t1-t0);
+        plumber_commtype_bytes[GATHERV] += bytes;
+    }
 
     return rc;
 }
@@ -179,18 +238,20 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, root, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = PLUMBER_count_dt_to_bytes(recvcount, recvtype);
-    if (rank==root) {
-        bytes += size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        size_t bytes = PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        if (rank==root) {
+            bytes += size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        }
+
+        plumber_commtype_count[SCATTER] += 1;
+        plumber_commtype_timer[SCATTER] += (t1-t0);
+        plumber_commtype_bytes[SCATTER] += bytes;
     }
-
-    plumber_collective_count[SCATTER] += 1;
-    plumber_collective_timer[SCATTER] += (t1-t0);
-    plumber_collective_bytes[SCATTER] += bytes;
 
     return rc;
 }
@@ -202,20 +263,22 @@ int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs, 
     int rc = PMPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype, root, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = PLUMBER_count_dt_to_bytes(recvcount, recvtype);
-    if (rank==root) {
-        for (int i=0; i<size; i++) {
-            bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtype);
+        size_t bytes = PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        if (rank==root) {
+            for (int i=0; i<size; i++) {
+                bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtype);
+            }
         }
-    }
 
-    plumber_collective_count[SCATTERV] += 1;
-    plumber_collective_timer[SCATTERV] += (t1-t0);
-    plumber_collective_bytes[SCATTERV] += bytes;
+        plumber_commtype_count[SCATTERV] += 1;
+        plumber_commtype_timer[SCATTERV] += (t1-t0);
+        plumber_commtype_bytes[SCATTERV] += bytes;
+    }
 
     return rc;
 }
@@ -227,16 +290,18 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
-    bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
 
-    plumber_collective_count[ALLGATHER] += 1;
-    plumber_collective_timer[ALLGATHER] += (t1-t0);
-    plumber_collective_bytes[ALLGATHER] += bytes;
+        plumber_commtype_count[ALLGATHER] += 1;
+        plumber_commtype_timer[ALLGATHER] += (t1-t0);
+        plumber_commtype_bytes[ALLGATHER] += bytes;
+    }
 
     return rc;
 }
@@ -248,18 +313,20 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
-    for (int i=0; i<size; i++) {
-        bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+        size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        for (int i=0; i<size; i++) {
+            bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+        }
+
+        plumber_commtype_count[ALLGATHERV] += 1;
+        plumber_commtype_timer[ALLGATHERV] += (t1-t0);
+        plumber_commtype_bytes[ALLGATHERV] += bytes;
     }
-
-    plumber_collective_count[ALLGATHERV] += 1;
-    plumber_collective_timer[ALLGATHERV] += (t1-t0);
-    plumber_collective_bytes[ALLGATHERV] += bytes;
 
     return rc;
 }
@@ -271,16 +338,18 @@ int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     int rc = PMPI_Alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
-    bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
+        size_t bytes = size * PLUMBER_count_dt_to_bytes(sendcount, sendtype);
+        bytes += size * PLUMBER_count_dt_to_bytes(recvcount, recvtype);
 
-    plumber_collective_count[ALLTOALL] += 1;
-    plumber_collective_timer[ALLTOALL] += (t1-t0);
-    plumber_collective_bytes[ALLTOALL] += bytes;
+        plumber_commtype_count[ALLTOALL] += 1;
+        plumber_commtype_timer[ALLTOALL] += (t1-t0);
+        plumber_commtype_bytes[ALLTOALL] += bytes;
+    }
 
     return rc;
 }
@@ -292,19 +361,21 @@ int MPI_Alltoallv(const void *sendbuf, const int *sendcounts, const int *sdispls
     int rc = PMPI_Alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts, rdispls, recvtype, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = 0;
-    for (int i=0; i<size; i++) {
-        bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtype);
-        bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+        size_t bytes = 0;
+        for (int i=0; i<size; i++) {
+            bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtype);
+            bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtype);
+        }
+
+        plumber_commtype_count[ALLTOALLV] += 1;
+        plumber_commtype_timer[ALLTOALLV] += (t1-t0);
+        plumber_commtype_bytes[ALLTOALLV] += bytes;
     }
-
-    plumber_collective_count[ALLTOALLV] += 1;
-    plumber_collective_timer[ALLTOALLV] += (t1-t0);
-    plumber_collective_bytes[ALLTOALLV] += bytes;
 
     return rc;
 }
@@ -316,21 +387,286 @@ int MPI_Alltoallw(const void *sendbuf, const int sendcounts[], const int sdispls
     int rc = PMPI_Alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, comm);
     double t1 = PLUMBER_wtime();
 
-    int rank, size;
-    PMPI_Comm_rank(comm, &rank);
-    PMPI_Comm_size(comm, &size);
+    if (plumber_profiling_active) {
+        int rank, size;
+        PMPI_Comm_rank(comm, &rank);
+        PMPI_Comm_size(comm, &size);
 
-    size_t bytes = 0;
-    for (int i=0; i<size; i++) {
-        bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtypes[i]);
-        bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtypes[i]);
+        size_t bytes = 0;
+        for (int i=0; i<size; i++) {
+            bytes += PLUMBER_count_dt_to_bytes(sendcounts[i], sendtypes[i]);
+            bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], recvtypes[i]);
+        }
+
+        plumber_commtype_count[ALLTOALLW] += 1;
+        plumber_commtype_timer[ALLTOALLW] += (t1-t0);
+        plumber_commtype_bytes[ALLTOALLW] += bytes;
     }
-
-    plumber_collective_count[ALLTOALLW] += 1;
-    plumber_collective_timer[ALLTOALLW] += (t1-t0);
-    plumber_collective_bytes[ALLTOALLW] += bytes;
 
     return rc;
 }
 
 /* point-to-point communication */
+
+int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Send(buf, count, datatype, dest, tag, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[SEND] += 1;
+        plumber_commtype_timer[SEND] += (t1-t0);
+        plumber_commtype_bytes[SEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Bsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Bsend(buf, count, datatype, dest, tag, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[BSEND] += 1;
+        plumber_commtype_timer[BSEND] += (t1-t0);
+        plumber_commtype_bytes[BSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Ssend(buf, count, datatype, dest, tag, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[SSEND] += 1;
+        plumber_commtype_timer[SSEND] += (t1-t0);
+        plumber_commtype_bytes[SSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Rsend(buf, count, datatype, dest, tag, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[RSEND] += 1;
+        plumber_commtype_timer[RSEND] += (t1-t0);
+        plumber_commtype_bytes[RSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Isend(buf, count, datatype, dest, tag, comm, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[ISEND] += 1;
+        plumber_commtype_timer[ISEND] += (t1-t0);
+        plumber_commtype_bytes[ISEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Ibsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Ibsend(buf, count, datatype, dest, tag, comm, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[IBSEND] += 1;
+        plumber_commtype_timer[IBSEND] += (t1-t0);
+        plumber_commtype_bytes[IBSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Issend(buf, count, datatype, dest, tag, comm, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[ISSEND] += 1;
+        plumber_commtype_timer[ISSEND] += (t1-t0);
+        plumber_commtype_bytes[ISSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Irsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Irsend(buf, count, datatype, dest, tag, comm, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[IRSEND] += 1;
+        plumber_commtype_timer[IRSEND] += (t1-t0);
+        plumber_commtype_bytes[IRSEND] += bytes;
+
+        if (plumber_sendmatrix_active) {
+            plumber_sendmatrix_count[dest] += 1;
+            plumber_sendmatrix_timer[dest] += (t1-t0);
+            plumber_sendmatrix_bytes[dest] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Recv(buf, count, datatype, source, tag, comm, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[RECV] += 1;
+        plumber_commtype_timer[RECV] += (t1-t0);
+        plumber_commtype_bytes[RECV] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag, MPI_Comm comm, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Irecv(buf, count, datatype, source, tag, comm, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[IRECV] += 1;
+        plumber_commtype_timer[IRECV] += (t1-t0);
+        plumber_commtype_bytes[IRECV] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Mrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message, MPI_Status *status)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Mrecv(buf, count, datatype, message, status);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[MRECV] += 1;
+        plumber_commtype_timer[MRECV] += (t1-t0);
+        plumber_commtype_bytes[MRECV] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Imrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Imrecv(buf, count, datatype, message, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[IMRECV] += 1;
+        plumber_commtype_timer[IMRECV] += (t1-t0);
+        plumber_commtype_bytes[IMRECV] += bytes;
+    }
+
+    return rc;
+}
+
+/*
+int PMPI_Wait(MPI_Request *request, MPI_Status *status);
+int PMPI_Test(MPI_Request *request, int *flag, MPI_Status *status);
+int PMPI_Waitany(int count, MPI_Request array_of_requests[], int *indx, MPI_Status *status);
+int PMPI_Testany(int count, MPI_Request array_of_requests[], int *indx, int *flag, MPI_Status *status);
+int PMPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status array_of_statuses[]);
+int PMPI_Testall(int count, MPI_Request array_of_requests[], int *flag, MPI_Status array_of_statuses[]);
+int PMPI_Waitsome(int incount, MPI_Request array_of_requests[], int *outcount, int array_of_indices[], MPI_Status array_of_statuses[]);
+int PMPI_Testsome(int incount, MPI_Request array_of_requests[], int *outcount, int array_of_indices[], MPI_Status array_of_statuses[]);
+*/
