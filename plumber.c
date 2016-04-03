@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <string.h>
 
+#ifdef HAVE_MALLOC_H
+#include <malloc.h>
+#endif
+
 #include <mpi.h>
 
 /********************************************
@@ -492,6 +496,93 @@ int MPI_Comm_free(MPI_Comm *comm)
 }
 
 /* collective communication */
+
+int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, root, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        int size;
+        PMPI_Comm_size(comm, &size);
+
+        /* i have no idea if this definition of bytes makes sense */
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[REDUCE] += 1;
+        plumber_commtype_timer[REDUCE] += (t1-t0);
+        plumber_commtype_bytes[REDUCE] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Allreduce(sendbuf, recvbuf, count, datatype, op, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        int size;
+        PMPI_Comm_size(comm, &size);
+
+        /* i have no idea if this definition of bytes makes sense */
+        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+
+        plumber_commtype_count[ALLREDUCE] += 1;
+        plumber_commtype_timer[ALLREDUCE] += (t1-t0);
+        plumber_commtype_bytes[ALLREDUCE] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Reduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[], MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Reduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        int size;
+        PMPI_Comm_size(comm, &size);
+
+        /* i have no idea if this definition of bytes makes sense */
+        size_t bytes = 0;
+        for (int i=0; i<size; i++) {
+            bytes += PLUMBER_count_dt_to_bytes(recvcounts[i], datatype);
+        }
+
+        plumber_commtype_count[REDSCAT] += 1;
+        plumber_commtype_timer[REDSCAT] += (t1-t0);
+        plumber_commtype_bytes[REDSCAT] += bytes;
+    }
+
+    return rc;
+}
+
+int MPI_Reduce_scatter_block(const void *sendbuf, void *recvbuf, int recvcount, MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        int size;
+        PMPI_Comm_size(comm, &size);
+
+        /* i have no idea if this definition of bytes makes sense */
+        size_t bytes = size * PLUMBER_count_dt_to_bytes(recvcount, datatype);
+
+        plumber_commtype_count[REDSCATB] += 1;
+        plumber_commtype_timer[REDSCATB] += (t1-t0);
+        plumber_commtype_bytes[REDSCATB] += bytes;
+    }
+
+    return rc;
+}
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
 {
