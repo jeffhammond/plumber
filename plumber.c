@@ -12,6 +12,7 @@
 int plumber_profiling_active = 0;
 int plumber_sendmatrix_active = 0;
 
+/* capture these in init and use in finalize */
 int plumber_argc;
 char** plumber_argv;
 
@@ -30,32 +31,23 @@ typedef enum {
     IRECV         = 9,
     MRECV         = 10,
     IMRECV        = 11,
-    /* request completion */
-    WAIT          = 12,
-    WAITANY       = 13,
-    WAITSOME      = 14,
-    WAITALL       = 15,
-    TEST          = 16,
-    TESTANY       = 17,
-    TESTSOME      = 18,
-    TESTALL       = 19,
     /* collectives */
-    BARRIER       = 20,
-    BCAST         = 21,
-    REDUCE        = 22,
-    ALLREDUCE     = 23,
-    ALLTOALL      = 24,
-    ALLTOALLV     = 25,
-    GATHER        = 26,
-    ALLGATHER     = 27,
-    SCATTER       = 28,
-    GATHERV       = 29,
-    ALLGATHERV    = 30,
-    SCATTERV      = 31,
-    REDSCAT       = 32,
-    REDSCATB      = 33,
-    ALLTOALLW     = 34,
-    MAX_COMMTYPE  = 35
+    BCAST         = 20,
+    REDUCE        = 21,
+    ALLREDUCE     = 22,
+    ALLTOALL      = 23,
+    ALLTOALLV     = 24,
+    GATHER        = 25,
+    ALLGATHER     = 26,
+    SCATTER       = 27,
+    GATHERV       = 28,
+    ALLGATHERV    = 29,
+    SCATTERV      = 30,
+    REDSCAT       = 31,
+    REDSCATB      = 32,
+    ALLTOALLW     = 33,
+    /* the end */
+    MAX_COMMTYPE  = 34
 } plumber_commtype_t;
 
 char plumber_commtype_names[MAX_COMMTYPE][32] = {
@@ -71,15 +63,6 @@ char plumber_commtype_names[MAX_COMMTYPE][32] = {
 "MPI_Irecv",
 "MPI_Mrecv",
 "MPI_Imrecv",
-"MPI_Wait",
-"MPI_Waitany",
-"MPI_Waitsome",
-"MPI_Waitall",
-"MPI_Test",
-"MPI_Testany",
-"MPI_Testsome",
-"MPI_Testall",
-"MPI_Barrier",
 "MPI_Bcast",
 "MPI_Reduce",
 "MPI_Allreduce",
@@ -96,18 +79,65 @@ char plumber_commtype_names[MAX_COMMTYPE][32] = {
 "MPI_Alltoallw"
 };
 
+typedef enum {
+    /* request completion */
+    WAIT          = 0,
+    WAITANY       = 1,
+    WAITSOME      = 2,
+    WAITALL       = 3,
+    TEST          = 4,
+    TESTANY       = 5,
+    TESTSOME      = 6,
+    TESTALL       = 7,
+    /* collectives */
+    BARRIER       = 8,
+    COMMDUP       = 9,
+    COMMCREATE    = 10,
+    COMMSPLIT     = 11,
+    COMMFREE      = 12,
+    /* the end */
+    MAX_UTILTYPE  = 13
+} plumber_utiltype_t;
+
+char plumber_utiltype_names[MAX_UTILTYPE][32] = {
+"MPI_Wait",
+"MPI_Waitany",
+"MPI_Waitsome",
+"MPI_Waitall",
+"MPI_Test",
+"MPI_Testany",
+"MPI_Testsome",
+"MPI_Testall",
+"MPI_Barrier",
+"MPI_Comm_dup",
+"MPI_Comm_create",
+"MPI_Comm_split",
+"MPI_Comm_free",
+};
+
 uint64_t plumber_commtype_count[MAX_COMMTYPE];
 double   plumber_commtype_timer[MAX_COMMTYPE];
 uint64_t plumber_commtype_bytes[MAX_COMMTYPE];
+
+uint64_t plumber_utiltype_count[MAX_UTILTYPE];
+double   plumber_utiltype_timer[MAX_UTILTYPE];
 
 /* dynamically allocated due to O(nproc) */
 uint64_t * plumber_sendmatrix_count;
 double   * plumber_sendmatrix_timer;
 uint64_t * plumber_sendmatrix_bytes;
 
+double plumber_start_time;
+
 /********************************************
  * internal functions
  ********************************************/
+
+/* replace with more accurate timer if necessary */
+static double PLUMBER_wtime(void)
+{
+    return PMPI_Wtime();
+}
 
 static void PLUMBER_init(int argc, char** argv)
 {
@@ -122,6 +152,11 @@ static void PLUMBER_init(int argc, char** argv)
             plumber_commtype_count[i] = 0;
             plumber_commtype_timer[i] = 0.0;
             plumber_commtype_bytes[i] = 0;
+        }
+
+        for (int i=0; i<MAX_UTILTYPE; i++) {
+            plumber_utiltype_count[i] = 0;
+            plumber_utiltype_timer[i] = 0.0;
         }
 
         plumber_sendmatrix_active = 1;
@@ -146,12 +181,17 @@ static void PLUMBER_init(int argc, char** argv)
             }
 
         }
+
+        plumber_start_time = PLUMBER_wtime();
     }
 }
 
 static void PLUMBER_finalize(int collective)
 {
     if (plumber_profiling_active) {
+
+        double plumber_end_time = PLUMBER_wtime();
+        double plumber_app_time = plumber_end_time - plumber_start_time;
 
         int rank, size;
         PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -199,20 +239,40 @@ static void PLUMBER_finalize(int collective)
             fprintf(stderr, "PLUMBER: fopen of rankfile %s did not succeed\n", rankfilepath);
         } else {
             fprintf(rankfile, "PLUMBER profile for process %d\n", rank);
+            /* process name */
             char procname[MPI_MAX_PROCESSOR_NAME] = {0};
             int len;
             MPI_Get_processor_name(procname, &len);
             fprintf(rankfile, "MPI_Get_processor_name = %s\n", procname);
+            /* application stats */
+            fprintf(rankfile, "total application run time = %lf\n", plumber_app_time);
+            double plumber_total_mpi_time = 0.0;
+            for (int i=0; i<MAX_COMMTYPE; i++) {
+                plumber_total_mpi_time += plumber_commtype_timer[i];
+            }
+            for (int i=0; i<MAX_UTILTYPE; i++) {
+                plumber_total_mpi_time += plumber_utiltype_timer[i];
+            }
+            /* MPI profile */
             fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 if (plumber_commtype_count[i] > 0) {
-                    fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
+                    fprintf(rankfile, "%32s %20llu %30.14lf %20llu\n",
                             plumber_commtype_names[i],
                             plumber_commtype_count[i],
                             plumber_commtype_timer[i],
                             plumber_commtype_bytes[i]);
                 }
             }
+            for (int i=0; i<MAX_UTILTYPE; i++) {
+                if (plumber_utiltype_count[i] > 0) {
+                    fprintf(rankfile, "%32s %20llu %30.14lf\n",
+                            plumber_utiltype_names[i],
+                            plumber_utiltype_count[i],
+                            plumber_utiltype_timer[i]);
+                }
+            }
+            fprintf(rankfile, "EOF");
             fclose(rankfile);
         }
 
@@ -225,13 +285,14 @@ static void PLUMBER_finalize(int collective)
                 fprintf(matrixfile, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
                 for (int i=0; i<size; i++) {
                     if (plumber_sendmatrix_count[i] > 0) {
-                        fprintf(rankfile, "%10d %20llu %30.14f %20llu\n",
+                        fprintf(rankfile, "%10d %20llu %30.14lf %20llu\n",
                                 i,
                                 plumber_sendmatrix_count[i],
                                 plumber_sendmatrix_timer[i],
                                 plumber_sendmatrix_bytes[i]);
                     }
                 }
+                fprintf(matrixfile, "EOF");
                 fclose(matrixfile);
             }
 
@@ -245,6 +306,8 @@ static void PLUMBER_finalize(int collective)
             uint64_t total_commtype_count[MAX_COMMTYPE];
             double   total_commtype_timer[MAX_COMMTYPE];
             uint64_t total_commtype_bytes[MAX_COMMTYPE];
+            uint64_t total_utiltype_count[MAX_UTILTYPE];
+            double   total_utiltype_timer[MAX_UTILTYPE];
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 PMPI_Reduce(&(plumber_commtype_count[i]), &(total_commtype_count[i]),
                             1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
@@ -252,6 +315,12 @@ static void PLUMBER_finalize(int collective)
                             1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
                 PMPI_Reduce(&(plumber_commtype_bytes[i]), &(total_commtype_bytes[i]),
                             1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+            }
+            for (int i=0; i<MAX_UTILTYPE; i++) {
+                PMPI_Reduce(&(plumber_utiltype_count[i]), &(total_utiltype_count[i]),
+                            1, MPI_UINT64_T, MPI_SUM, 0, MPI_COMM_WORLD);
+                PMPI_Reduce(&(plumber_utiltype_timer[i]), &(total_utiltype_timer[i]),
+                            1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
             }
 
             /* write file from rank 0 */
@@ -261,21 +330,32 @@ static void PLUMBER_finalize(int collective)
                     fprintf(stderr, "PLUMBER: fopen of summaryfile %s did not succeed\n", summaryfilepath);
                 } else {
                     fprintf(summaryfile, "PLUMBER summary\n");
+                    /* program invocation */
                     fprintf(summaryfile, "program invocation was:");
                     for (int i=0; i<plumber_argc; i++) {
                         fprintf(summaryfile, " %s", plumber_argv[i]);
                     }
                     fprintf(summaryfile, "\n");
+                    /* aggregrate MPI profile */
                     fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
                     for (int i=0; i<MAX_COMMTYPE; i++) {
                         if (total_commtype_count[i] > 0) {
-                            fprintf(rankfile, "%32s %20llu %30.14f %20llu\n",
+                            fprintf(rankfile, "%32s %20llu %30.14lf %20llu\n",
                                     plumber_commtype_names[i],
                                     total_commtype_count[i],
                                     total_commtype_timer[i],
                                     total_commtype_bytes[i]);
                         }
                     }
+                    for (int i=0; i<MAX_UTILTYPE; i++) {
+                        if (total_utiltype_count[i] > 0) {
+                            fprintf(rankfile, "%32s %20llu %30.14lf\n",
+                                    plumber_utiltype_names[i],
+                                    total_utiltype_count[i],
+                                    total_utiltype_timer[i]);
+                        }
+                    }
+                    fprintf(summaryfile, "EOF");
                     fclose(summaryfile);
                 }
             }
@@ -293,12 +373,6 @@ static size_t PLUMBER_count_dt_to_bytes(int count, MPI_Datatype datatype)
     }
     size_t bytes = (size_t)count * (size_t)typesize;
     return bytes;
-}
-
-/* replace with more accurate timer if necessary */
-static double PLUMBER_wtime(void)
-{
-    return PMPI_Wtime();
 }
 
 /********************************************
@@ -343,7 +417,7 @@ int MPI_Finalize(void)
     return PMPI_Finalize();
 }
 
-/* collective communication */
+/* collective utility functions */
 
 int MPI_Barrier(MPI_Comm comm)
 {
@@ -351,11 +425,73 @@ int MPI_Barrier(MPI_Comm comm)
     int rc = PMPI_Barrier(comm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_commtype_count[BARRIER] += 1;
-        plumber_commtype_timer[BARRIER] += (t1-t0);
+        plumber_utiltype_count[BARRIER] += 1;
+        plumber_utiltype_timer[BARRIER] += (t1-t0);
     }
     return rc;
 }
+
+int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_dup(comm, newcomm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_count[COMMDUP] += 1;
+        plumber_utiltype_timer[COMMDUP] += (t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_dup_with_info(comm, info, newcomm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_count[COMMDUP] += 1;
+        plumber_utiltype_timer[COMMDUP] += (t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_create(comm, group, newcomm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_count[COMMCREATE] += 1;
+        plumber_utiltype_timer[COMMCREATE] += (t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_split(comm, color, key, newcomm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_count[COMMSPLIT] += 1;
+        plumber_utiltype_timer[COMMSPLIT] += (t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Comm_free(MPI_Comm *comm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_free(comm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_count[COMMFREE] += 1;
+        plumber_utiltype_timer[COMMFREE] += (t1-t0);
+    }
+    return rc;
+}
+
+/* collective communication */
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm)
 {
