@@ -249,7 +249,7 @@ static void PLUMBER_finalize(int collective)
             MPI_Get_processor_name(procname, &len);
             fprintf(rankfile, "MPI_Get_processor_name = %s\n", procname);
             /* application stats */
-            fprintf(rankfile, "total application run time = %lf\n", plumber_app_time);
+            fprintf(rankfile, "total application time = %lf\n", plumber_app_time);
             double plumber_total_mpi_time = 0.0;
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 plumber_total_mpi_time += plumber_commtype_timer[i];
@@ -257,6 +257,9 @@ static void PLUMBER_finalize(int collective)
             for (int i=0; i<MAX_UTILTYPE; i++) {
                 plumber_total_mpi_time += plumber_utiltype_timer[i];
             }
+            fprintf(rankfile, "total MPI time = %lf (%6.2lf %)\n",
+                              plumber_total_mpi_time,
+                              100*plumber_total_mpi_time/plumber_app_time);
             /* MPI profile */
             fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
