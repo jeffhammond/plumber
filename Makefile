@@ -12,7 +12,7 @@ test : test.c plumber.o
 	$(CC) $(CFLAGS) $< plumber.o -o $@
 
 check: test
-	mpirun -n 4 ./test
+	mpirun -n 4 ./test "bogus" 0 100 "hijinks"
 
 clean:
 	-rm -f plumber.o
