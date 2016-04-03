@@ -279,7 +279,7 @@ static void PLUMBER_finalize(int collective)
                             plumber_utiltype_timer[i]);
                 }
             }
-            fprintf(rankfile, "EOF");
+            fprintf(rankfile, "EOF\n");
             fclose(rankfile);
         }
 
@@ -299,7 +299,7 @@ static void PLUMBER_finalize(int collective)
                                 plumber_sendmatrix_bytes[i]);
                     }
                 }
-                fprintf(matrixfile, "EOF");
+                fprintf(matrixfile, "EOF\n");
                 fclose(matrixfile);
             }
 
@@ -362,7 +362,7 @@ static void PLUMBER_finalize(int collective)
                                     total_utiltype_timer[i]);
                         }
                     }
-                    fprintf(summaryfile, "EOF");
+                    fprintf(summaryfile, "EOF\n");
                     fclose(summaryfile);
                 }
             }
