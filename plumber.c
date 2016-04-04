@@ -139,8 +139,10 @@ typedef enum {
     WINATTACH     = 17,
     WINDETACH     = 18,
     WINFREE       = 19,
+    WINFENCE      = 20,
+    WINSYNC       = 21,
     /* the end */
-    MAX_UTILTYPE  = 20
+    MAX_UTILTYPE  = 22
 } plumber_utiltype_t;
 
 char plumber_utiltype_names[MAX_UTILTYPE][32] = {
@@ -163,7 +165,9 @@ char plumber_utiltype_names[MAX_UTILTYPE][32] = {
 "MPI_Win_create_dynamic",
 "MPI_Win_attach",
 "MPI_Win_detach",
-"MPI_Win_free"
+"MPI_Win_free",
+"MPI_Win_fence",
+"MPI_Win_sync"
 };
 
 uint64_t plumber_commtype_count[MAX_COMMTYPE];
@@ -1697,7 +1701,36 @@ int MPI_Rget_accumulate(const void *origin_addr, int origin_count,
                         MPI_Request *request);
 #endif
 
+/* BSP */
+int MPI_Win_fence(int assert, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_fence(assert, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFENCE;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
 /* PASSIVE TARGET */
+int MPI_Win_sync(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_sync(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINSYNC;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
 int MPI_Win_lock(int lock_type, int rank, int assert, MPI_Win win);
 int MPI_Win_unlock(int rank, MPI_Win win);
 int MPI_Win_lock_all(int assert, MPI_Win win);
@@ -1706,7 +1739,6 @@ int MPI_Win_flush(int rank, MPI_Win win);
 int MPI_Win_flush_all(MPI_Win win);
 int MPI_Win_flush_local(int rank, MPI_Win win);
 int MPI_Win_flush_local_all(MPI_Win win);
-int MPI_Win_sync(MPI_Win win);
 
 #if 0
 /* PSCW */
@@ -1715,7 +1747,5 @@ int MPI_Win_start(MPI_Group group, int assert, MPI_Win win);
 int MPI_Win_complete(MPI_Win win);
 int MPI_Win_wait(MPI_Win win);
 int MPI_Win_test(MPI_Win win, int *flag);
-
-/* BSP */
-int MPI_Win_fence(int assert, MPI_Win win);
 #endif
+
