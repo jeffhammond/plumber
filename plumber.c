@@ -7,6 +7,10 @@
 #include <malloc.h>
 #endif
 
+#ifdef HAVE_PTHREAD_H
+#include <pthread.h>
+#endif
+
 #include <mpi.h>
 
 /********************************************
@@ -15,6 +19,20 @@
 
 int plumber_profiling_active = 0;
 int plumber_sendmatrix_active = 0;
+
+/* if non-zero (1), mutual exclusion is required */
+int plumber_multithreaded = 0;
+#ifdef HAVE_PTHREAD_H
+typedef pthread_mutex_t plumber_mutex_t;
+plumber_mutex_t plumber_mutex = PTHREAD_MUTEX_INITIALIZER;
+static inline int plumber_mutex_lock(plumber_mutex_t * mutex) { return pthread_mutex_lock(mutex); }
+static inline int plumber_mutex_unlock(plumber_mutex_t * mutex) { return pthread_mutex_unlock(mutex); }
+#else
+typedef pthread_mutex_t int;
+plumber_mutex_t plumber_mutex = 0;
+static inline int plumber_mutex_lock(plumber_mutex_t mutex) { mutex = 1; return 0; }
+static inline int plumber_mutex_unlock(plumber_mutex_t mutex) { mutex = 0; return 0; }
+#endif
 
 /* capture these in init and use in finalize */
 int plumber_argc;
@@ -131,11 +149,51 @@ uint64_t * plumber_sendmatrix_count;
 double   * plumber_sendmatrix_timer;
 uint64_t * plumber_sendmatrix_bytes;
 
+/* time from the end of PLUMBER_init to capture application time */
 double plumber_start_time;
+
+/* this is the state used for profiling on user-defined communicators */
+typedef struct {
+    uint64_t commtype_count[MAX_COMMTYPE];
+    double   commtype_timer[MAX_COMMTYPE];
+    uint64_t commtype_bytes[MAX_COMMTYPE];
+
+    uint64_t utiltype_count[MAX_UTILTYPE];
+    double   utiltype_timer[MAX_UTILTYPE];
+
+    uint64_t * sendmatrix_count;
+    double   * sendmatrix_timer;
+    uint64_t * sendmatrix_bytes;
+
+    double start_time;
+} plumber_usercomm_data_t;
 
 /********************************************
  * internal functions
  ********************************************/
+
+static inline void PLUMBER_add2(uint64_t * o1, double * o2,
+                                uint64_t   i1, double   i2)
+{
+    if (plumber_multithreaded) plumber_mutex_lock(&plumber_mutex);
+    {
+        *o1 += i1;
+        *o2 += i2;
+    }
+    if (plumber_multithreaded) plumber_mutex_unlock(&plumber_mutex);
+}
+
+static inline void PLUMBER_add3(uint64_t * o1, double * o2, uint64_t * o3,
+                                uint64_t   i1, double   i2, double     i3)
+{
+    if (plumber_multithreaded) plumber_mutex_lock(&plumber_mutex);
+    {
+        *o1 += i1;
+        *o2 += i2;
+        *o3 += i3;
+    }
+    if (plumber_multithreaded) plumber_mutex_unlock(&plumber_mutex);
+}
 
 /* replace with more accurate timer if necessary */
 static double PLUMBER_wtime(void)
@@ -143,11 +201,16 @@ static double PLUMBER_wtime(void)
     return PMPI_Wtime();
 }
 
-static void PLUMBER_init(int argc, char** argv)
+static void PLUMBER_init(int argc, char** argv, int threading)
 {
     plumber_profiling_active = 1;
 
     if (plumber_profiling_active) {
+
+        plumber_multithreaded = (threading==MPI_THREAD_MULTIPLE) ? 1 : 0;
+        if (plumber_multithreaded) {
+
+        }
 
         plumber_argc = argc;
         plumber_argv = argv;
@@ -257,9 +320,9 @@ static void PLUMBER_finalize(int collective)
             for (int i=0; i<MAX_UTILTYPE; i++) {
                 plumber_total_mpi_time += plumber_utiltype_timer[i];
             }
-            fprintf(rankfile, "total MPI time = %lf (%6.2lf %)\n",
+            fprintf(rankfile, "total MPI time = %lf (%6.2lf percent)\n",
                               plumber_total_mpi_time,
-                              100*plumber_total_mpi_time/plumber_app_time);
+                              100.*plumber_total_mpi_time/plumber_app_time);
             /* MPI profile */
             fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
@@ -371,6 +434,7 @@ static void PLUMBER_finalize(int collective)
     }
 }
 
+/* this does not yet support user-defined datatypes */
 static size_t PLUMBER_count_dt_to_bytes(int count, MPI_Datatype datatype)
 {
     int typesize;
@@ -392,9 +456,9 @@ int MPI_Init(int * argc, char** * argv)
 {
     int rc = PMPI_Init(argc, argv);
     if (argc != NULL && argv != NULL) {
-        PLUMBER_init(*argc, *argv);
+        PLUMBER_init(*argc, *argv, MPI_THREAD_SINGLE);
     } else {
-        PLUMBER_init(0,NULL);
+        PLUMBER_init(0, NULL, MPI_THREAD_SINGLE);
     }
     return rc;
 }
@@ -403,9 +467,9 @@ int MPI_Init_thread(int * argc, char** * argv, int requested, int * provided)
 {
     int rc = PMPI_Init_thread(argc, argv, requested, provided);
     if (argc != NULL && argv != NULL) {
-        PLUMBER_init(*argc, *argv);
+        PLUMBER_init(*argc, *argv, *provided);
     } else {
-        PLUMBER_init(0,NULL);
+        PLUMBER_init(0, NULL, *provided);
     }
     return rc;
 }
@@ -1075,10 +1139,8 @@ int MPI_Imrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message
 
     if (plumber_profiling_active) {
         size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
-
-        plumber_commtype_count[IMRECV] += 1;
-        plumber_commtype_timer[IMRECV] += (t1-t0);
-        plumber_commtype_bytes[IMRECV] += bytes;
+        PLUMBER_add3( &plumber_commtype_count[IMRECV], &plumber_commtype_timer[IMRECV], &plumber_commtype_bytes[IMRECV],
+                      1, t1-t0, bytes);
     }
 
     return rc;
@@ -1189,8 +1251,8 @@ int PMPI_Testsome(int incount, MPI_Request requests[], int *outcount, int indice
     double t1 = PLUMBER_wtime();
 
     if (plumber_profiling_active) {
-        plumber_commtype_count[TESTSOME] += 1;
-        plumber_commtype_timer[TESTSOME] += (t1-t0);
+        PLUMBER_add2( &plumber_commtype_count[TESTSOME], &plumber_commtype_timer[TESTSOME],
+                      1, t1-t0);
     }
 
     return rc;

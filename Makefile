@@ -1,4 +1,4 @@
-CC      = mpicc
+CC      =  /opt/mpich/dev/clang/default/bin/mpicc
 
 # C99 is _required_ to build
 CFLAGS  = -std=c99
@@ -11,6 +11,9 @@ CFLAGS += -Werror
 
 # enable memory profiling - not available on Mac
 #CFLAGS += -DHAVE_MALLOC_H
+
+# enable thread safety
+CFLAGS += -DHAVE_PTHREAD_H
 
 all: plumber.o
 
