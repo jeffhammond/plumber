@@ -18,7 +18,8 @@
  ********************************************/
 
 int plumber_profiling_active = 0;
-int plumber_sendmatrix_active = 0;
+int plumber_p2pmatrix_active = 0;
+int plumber_rmamatrix_active = 0;
 
 /* if non-zero (1), mutual exclusion is required */
 int plumber_multithreaded = 0;
@@ -68,8 +69,15 @@ typedef enum {
     REDSCAT       = 31,
     REDSCATB      = 32,
     ALLTOALLW     = 33,
+    /* RMA */
+    FETCHOP       = 34,
+    COMPSWAP      = 35,
+    ACC           = 36,
+    GET           = 37,
+    PUT           = 38,
+    GETACC        = 39,
     /* the end */
-    MAX_COMMTYPE  = 34
+    MAX_COMMTYPE  = 40
 } plumber_commtype_t;
 
 char plumber_commtype_names[MAX_COMMTYPE][32] = {
@@ -98,7 +106,13 @@ char plumber_commtype_names[MAX_COMMTYPE][32] = {
 "MPI_Scatterv",
 "MPI_Reduce_scatter",
 "MPI_Reduce_scatter_block",
-"MPI_Alltoallw"
+"MPI_Alltoallw",
+"MPI_Fetch_and_op",
+"MPI_Compare_and_swap",
+"MPI_Accumulate",
+"MPI_Get",
+"MPI_Put",
+"MPI_Get_accumulate"
 };
 
 typedef enum {
@@ -143,6 +157,13 @@ char plumber_utiltype_names[MAX_UTILTYPE][32] = {
 "MPI_Comm_create",
 "MPI_Comm_split",
 "MPI_Comm_free",
+"MPI_Win_create",
+"MPI_Win_allocate",
+"MPI_Win_allocate_shared",
+"MPI_Win_create_dynamic",
+"MPI_Win_attach",
+"MPI_Win_detach",
+"MPI_Win_free"
 };
 
 uint64_t plumber_commtype_count[MAX_COMMTYPE];
@@ -153,9 +174,14 @@ uint64_t plumber_utiltype_count[MAX_UTILTYPE];
 double   plumber_utiltype_timer[MAX_UTILTYPE];
 
 /* dynamically allocated due to O(nproc) */
-uint64_t * plumber_sendmatrix_count;
-double   * plumber_sendmatrix_timer;
-uint64_t * plumber_sendmatrix_bytes;
+uint64_t * plumber_p2pmatrix_count;
+double   * plumber_p2pmatrix_timer;
+uint64_t * plumber_p2pmatrix_bytes;
+
+/* dynamically allocated due to O(nproc) */
+uint64_t * plumber_rmamatrix_count;
+double   * plumber_rmamatrix_timer;
+uint64_t * plumber_rmamatrix_bytes;
 
 /* time from the end of PLUMBER_init to capture application time */
 double plumber_start_time;
@@ -169,9 +195,9 @@ typedef struct {
     uint64_t utiltype_count[MAX_UTILTYPE];
     double   utiltype_timer[MAX_UTILTYPE];
 
-    uint64_t * sendmatrix_count;
-    double   * sendmatrix_timer;
-    uint64_t * sendmatrix_bytes;
+    uint64_t * p2pmatrix_count;
+    double   * p2pmatrix_timer;
+    uint64_t * p2pmatrix_bytes;
 
     double start_time;
 } plumber_usercomm_data_t;
@@ -236,25 +262,46 @@ static void PLUMBER_init(int argc, char** argv, int threading)
             plumber_utiltype_timer[i] = 0.0;
         }
 
-        plumber_sendmatrix_active = 1;
+        plumber_p2pmatrix_active = 1;
 
-        if (plumber_sendmatrix_active) {
+        if (plumber_p2pmatrix_active) {
             int size;
             PMPI_Comm_size(MPI_COMM_WORLD, &size);
 
-            plumber_sendmatrix_count = malloc(size * sizeof(uint64_t));
-            plumber_sendmatrix_timer = malloc(size * sizeof(double));
-            plumber_sendmatrix_bytes = malloc(size * sizeof(uint64_t));
+            plumber_p2pmatrix_count = malloc(size * sizeof(uint64_t));
+            plumber_p2pmatrix_timer = malloc(size * sizeof(double));
+            plumber_p2pmatrix_bytes = malloc(size * sizeof(uint64_t));
 
-            if (plumber_sendmatrix_count == NULL || plumber_sendmatrix_timer == NULL || plumber_sendmatrix_bytes == NULL) {
-                fprintf(stderr, "PLUMBER: sendmatrix memory allocation did not succeed for %d processes\n", size);
+            if (plumber_p2pmatrix_count == NULL || plumber_p2pmatrix_timer == NULL || plumber_p2pmatrix_bytes == NULL) {
+                fprintf(stderr, "PLUMBER: p2pmatrix memory allocation did not succeed for %d processes\n", size);
                 PMPI_Abort(MPI_COMM_WORLD, 1);
             }
 
             for (int i=0; i<size; i++) {
-                plumber_sendmatrix_count[i] = 0;
-                plumber_sendmatrix_timer[i] = 0.0;
-                plumber_sendmatrix_bytes[i] = 0;
+                plumber_p2pmatrix_count[i] = 0;
+                plumber_p2pmatrix_timer[i] = 0.0;
+                plumber_p2pmatrix_bytes[i] = 0;
+            }
+
+        }
+
+        if (plumber_rmamatrix_active) {
+            int size;
+            PMPI_Comm_size(MPI_COMM_WORLD, &size);
+
+            plumber_rmamatrix_count = malloc(size * sizeof(uint64_t));
+            plumber_rmamatrix_timer = malloc(size * sizeof(double));
+            plumber_rmamatrix_bytes = malloc(size * sizeof(uint64_t));
+
+            if (plumber_rmamatrix_count == NULL || plumber_rmamatrix_timer == NULL || plumber_rmamatrix_bytes == NULL) {
+                fprintf(stderr, "PLUMBER: rmamatrix memory allocation did not succeed for %d processes\n", size);
+                PMPI_Abort(MPI_COMM_WORLD, 1);
+            }
+
+            for (int i=0; i<size; i++) {
+                plumber_rmamatrix_count[i] = 0;
+                plumber_rmamatrix_timer[i] = 0.0;
+                plumber_rmamatrix_bytes[i] = 0;
             }
 
         }
@@ -278,13 +325,15 @@ static void PLUMBER_finalize(int collective)
 
         char summaryfilepath[255];
         char rankfilepath[255];
-        char matrixfilepath[255];
+        char p2pmatrixfilepath[255];
+        char rmamatrixfilepath[255];
 
         char * prefix = getenv("PLUMBER_PREFIX");
         if (prefix != NULL) {
-            strncpy(summaryfilepath, prefix, 255);
-            strncpy(rankfilepath,    prefix, 255);
-            strncpy(matrixfilepath,  prefix, 255);
+            strncpy(summaryfilepath,   prefix, 255);
+            strncpy(rankfilepath,      prefix, 255);
+            strncpy(p2pmatrixfilepath,    prefix, 255);
+            strncpy(rmamatrixfilepath, prefix, 255);
         } else {
             char plumber_program_name[255];
             if (plumber_argc>0) {
@@ -293,9 +342,10 @@ static void PLUMBER_finalize(int collective)
                 strncpy(plumber_program_name, "unknown", 255);
             }
             /* append plumber_program_name with timestamp to be unique... */
-            strncpy(summaryfilepath, plumber_program_name, 255);
-            strncpy(rankfilepath,    plumber_program_name, 255);
-            strncpy(matrixfilepath,  plumber_program_name, 255);
+            strncpy(summaryfilepath,   plumber_program_name, 255);
+            strncpy(rankfilepath,      plumber_program_name, 255);
+            strncpy(p2pmatrixfilepath,    plumber_program_name, 255);
+            strncpy(rmamatrixfilepath, plumber_program_name, 255);
         }
 
         /* 2^31 = 2147483648 requires 10 digits */
@@ -308,8 +358,11 @@ static void PLUMBER_finalize(int collective)
         strcat(rankfilepath, ".plumber.profile.");
         strcat(rankfilepath, rankstring);
 
-        strcat(matrixfilepath, ".plumber.matrix.");
-        strcat(matrixfilepath, rankstring);
+        strcat(p2pmatrixfilepath, ".plumber.matrix.");
+        strcat(p2pmatrixfilepath, rankstring);
+
+        strcat(rmamatrixfilepath, ".plumber.rmamatrix.");
+        strcat(rmamatrixfilepath, rankstring);
 
         /* this will blast existing files with the same name.
          * we should test for this case and not overwrite them. */
@@ -358,29 +411,54 @@ static void PLUMBER_finalize(int collective)
             fclose(rankfile);
         }
 
-        if (plumber_sendmatrix_active) {
-            FILE * matrixfile = fopen(matrixfilepath, "w");
-            if ( matrixfile==NULL ) {
-                fprintf(stderr, "PLUMBER: fopen of matrixfile %s did not succeed\n", matrixfilepath);
+        if (plumber_p2pmatrix_active) {
+            FILE * p2pmatrixfile = fopen(p2pmatrixfilepath, "w");
+            if ( p2pmatrixfile==NULL ) {
+                fprintf(stderr, "PLUMBER: fopen of p2pmatrixfile %s did not succeed\n", p2pmatrixfilepath);
             } else {
-                fprintf(matrixfile, "PLUMBER matrix for process %d\n", rank);
-                fprintf(matrixfile, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
+                fprintf(p2pmatrixfile, "PLUMBER matrix for process %d\n", rank);
+                fprintf(p2pmatrixfile, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
                 for (int i=0; i<size; i++) {
-                    if (plumber_sendmatrix_count[i] > 0) {
+                    if (plumber_p2pmatrix_count[i] > 0) {
                         fprintf(rankfile, "%10d %20llu %30.14lf %20llu\n",
                                 i,
-                                plumber_sendmatrix_count[i],
-                                plumber_sendmatrix_timer[i],
-                                plumber_sendmatrix_bytes[i]);
+                                plumber_p2pmatrix_count[i],
+                                plumber_p2pmatrix_timer[i],
+                                plumber_p2pmatrix_bytes[i]);
                     }
                 }
-                fprintf(matrixfile, "EOF\n");
-                fclose(matrixfile);
+                fprintf(p2pmatrixfile, "EOF\n");
+                fclose(p2pmatrixfile);
             }
 
-            free(plumber_sendmatrix_count);
-            free(plumber_sendmatrix_timer);
-            free(plumber_sendmatrix_bytes);
+            free(plumber_p2pmatrix_count);
+            free(plumber_p2pmatrix_timer);
+            free(plumber_p2pmatrix_bytes);
+        }
+
+        if (plumber_rmamatrix_active) {
+            FILE * rmamatrixfile = fopen(rmamatrixfilepath, "w");
+            if ( rmamatrixfile==NULL ) {
+                fprintf(stderr, "PLUMBER: fopen of rmamatrixfile %s did not succeed\n", rmamatrixfilepath);
+            } else {
+                fprintf(rmamatrixfile, "PLUMBER one-sided matrix for process %d\n", rank);
+                fprintf(rmamatrixfile, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
+                for (int i=0; i<size; i++) {
+                    if (plumber_rmamatrix_count[i] > 0) {
+                        fprintf(rankfile, "%10d %20llu %30.14lf %20llu\n",
+                                i,
+                                plumber_rmamatrix_count[i],
+                                plumber_rmamatrix_timer[i],
+                                plumber_rmamatrix_bytes[i]);
+                    }
+                }
+                fprintf(rmamatrixfile, "EOF\n");
+                fclose(rmamatrixfile);
+            }
+
+            free(plumber_rmamatrix_count);
+            free(plumber_rmamatrix_timer);
+            free(plumber_rmamatrix_bytes);
         }
 
         if (collective) {
@@ -948,10 +1026,10 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -972,10 +1050,10 @@ int MPI_Bsend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -996,10 +1074,10 @@ int MPI_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1020,10 +1098,10 @@ int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1044,10 +1122,10 @@ int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int t
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1068,10 +1146,10 @@ int MPI_Ibsend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1092,10 +1170,10 @@ int MPI_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1116,10 +1194,10 @@ int MPI_Irsend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
                       &plumber_commtype_bytes[offset],
                       1, t1-t0, bytes);
 
-        if (plumber_sendmatrix_active) {
-            plumber_sendmatrix_count[dest] += 1;
-            plumber_sendmatrix_timer[dest] += (t1-t0);
-            plumber_sendmatrix_bytes[dest] += bytes;
+        if (plumber_p2pmatrix_active) {
+            plumber_p2pmatrix_count[dest] += 1;
+            plumber_p2pmatrix_timer[dest] += (t1-t0);
+            plumber_p2pmatrix_bytes[dest] += bytes;
         }
     }
 
@@ -1431,7 +1509,30 @@ int MPI_Win_free(MPI_Win *win)
 /* data movement */
 int MPI_Fetch_and_op(const void *origin_addr, void *result_addr,
                      MPI_Datatype datatype, int target_rank, MPI_Aint target_disp,
-                     MPI_Op op, MPI_Win win);
+                     MPI_Op op, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Fetch_and_op(origin_addr, result_addr, datatype, target_rank, target_disp, op, win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(1, datatype);
+        plumber_commtype_t offset = FETCHOP;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 int MPI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
                          void *result_addr, MPI_Datatype datatype, int target_rank,
                          MPI_Aint target_disp, MPI_Win win);
