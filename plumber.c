@@ -205,6 +205,8 @@ static void PLUMBER_init(int argc, char** argv, int threading)
 {
     plumber_profiling_active = 1;
 
+    /* no mutex required because MPI_Init(_thread) can only be called
+     * from one thread. */
     if (plumber_profiling_active) {
 
         plumber_multithreaded = (threading==MPI_THREAD_MULTIPLE) ? 1 : 0;
@@ -255,6 +257,8 @@ static void PLUMBER_init(int argc, char** argv, int threading)
 
 static void PLUMBER_finalize(int collective)
 {
+    /* no mutex required because MPI_Finalize can only be called
+     * from one thread. */
     if (plumber_profiling_active) {
 
         double plumber_end_time = PLUMBER_wtime();
