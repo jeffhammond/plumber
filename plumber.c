@@ -117,8 +117,16 @@ typedef enum {
     COMMCREATE    = 10,
     COMMSPLIT     = 11,
     COMMFREE      = 12,
+    /* RMA */
+    WINCREATE     = 13,
+    WINALLOC      = 14,
+    WINALLOCSH    = 15,
+    WINCREATEDYN  = 16,
+    WINATTACH     = 17,
+    WINDETACH     = 18,
+    WINFREE       = 19,
     /* the end */
-    MAX_UTILTYPE  = 13
+    MAX_UTILTYPE  = 20
 } plumber_utiltype_t;
 
 char plumber_utiltype_names[MAX_UTILTYPE][32] = {
@@ -501,8 +509,8 @@ int MPI_Barrier(MPI_Comm comm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = BARRIER;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -515,8 +523,8 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMDUP;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -529,8 +537,8 @@ int MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMDUP;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -543,8 +551,8 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMCREATE;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -557,8 +565,8 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMSPLIT;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -571,8 +579,8 @@ int MPI_Comm_free(MPI_Comm *comm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMFREE;
-        PLUMBER_add2( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
                       1, t1-t0);
     }
     return rc;
@@ -1318,3 +1326,167 @@ int PMPI_Testsome(int incount, MPI_Request requests[], int *outcount, int indice
     return rc;
 }
 
+/* one-sided communication */
+
+/* window ctor+dtor */
+int MPI_Win_create(void *base, MPI_Aint size, int disp_unit, MPI_Info info, MPI_Comm comm, MPI_Win *win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_create(base, size, disp_unit, info, comm, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINCREATE;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_allocate(MPI_Aint size, int disp_unit, MPI_Info info, MPI_Comm comm, void *baseptr, MPI_Win *win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_allocate(size, disp_unit, info, comm, baseptr, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINALLOC;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_allocate_shared(MPI_Aint size, int disp_unit, MPI_Info info, MPI_Comm comm, void *baseptr, MPI_Win *win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_allocate_shared(size, disp_unit, info, comm, baseptr, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINALLOCSH;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_create_dynamic(MPI_Info info, MPI_Comm comm, MPI_Win *win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_create_dynamic(info, comm, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINCREATEDYN;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_attach(MPI_Win win, void *base, MPI_Aint size)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_attach(win, base, size);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINATTACH;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_detach(MPI_Win win, const void *base)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_detach(win, base);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINDETACH;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_free(MPI_Win *win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_free(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFREE;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+
+/* data movement */
+int MPI_Fetch_and_op(const void *origin_addr, void *result_addr,
+                     MPI_Datatype datatype, int target_rank, MPI_Aint target_disp,
+                     MPI_Op op, MPI_Win win);
+int MPI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
+                         void *result_addr, MPI_Datatype datatype, int target_rank,
+                         MPI_Aint target_disp, MPI_Win win);
+int MPI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                   int target_rank, MPI_Aint target_disp, int target_count,
+                   MPI_Datatype target_datatype, MPI_Op op, MPI_Win win);
+int MPI_Get(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+            int target_rank, MPI_Aint target_disp, int target_count,
+            MPI_Datatype target_datatype, MPI_Win win);
+int MPI_Put(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+            int target_rank, MPI_Aint target_disp, int target_count,
+            MPI_Datatype target_datatype, MPI_Win win);
+int MPI_Get_accumulate(const void *origin_addr, int origin_count,
+                       MPI_Datatype origin_datatype, void *result_addr, int result_count,
+                       MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp,
+                       int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win);
+#if 0
+int MPI_Rput(const void *origin_addr, int origin_count,
+             MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
+             int target_count, MPI_Datatype target_datatype, MPI_Win win,
+             MPI_Request *request);
+int MPI_Rget(void *origin_addr, int origin_count,
+             MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
+             int target_count, MPI_Datatype target_datatype, MPI_Win win,
+             MPI_Request *request);
+int MPI_Raccumulate(const void *origin_addr, int origin_count,
+                    MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
+                    int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win,
+                    MPI_Request *request);
+int MPI_Rget_accumulate(const void *origin_addr, int origin_count,
+                        MPI_Datatype origin_datatype, void *result_addr, int result_count,
+                        MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp,
+                        int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win,
+                        MPI_Request *request);
+#endif
+
+/* PASSIVE TARGET */
+int MPI_Win_lock(int lock_type, int rank, int assert, MPI_Win win);
+int MPI_Win_unlock(int rank, MPI_Win win);
+int MPI_Win_lock_all(int assert, MPI_Win win);
+int MPI_Win_unlock_all(MPI_Win win);
+int MPI_Win_flush(int rank, MPI_Win win);
+int MPI_Win_flush_all(MPI_Win win);
+int MPI_Win_flush_local(int rank, MPI_Win win);
+int MPI_Win_flush_local_all(MPI_Win win);
+int MPI_Win_sync(MPI_Win win);
+
+#if 0
+/* PSCW */
+int MPI_Win_post(MPI_Group group, int assert, MPI_Win win);
+int MPI_Win_start(MPI_Group group, int assert, MPI_Win win);
+int MPI_Win_complete(MPI_Win win);
+int MPI_Win_wait(MPI_Win win);
+int MPI_Win_test(MPI_Win win, int *flag);
+
+/* BSP */
+int MPI_Win_fence(int assert, MPI_Win win);
+#endif
