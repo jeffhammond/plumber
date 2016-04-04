@@ -1535,20 +1535,148 @@ int MPI_Fetch_and_op(const void *origin_addr, void *result_addr,
 
 int MPI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
                          void *result_addr, MPI_Datatype datatype, int target_rank,
-                         MPI_Aint target_disp, MPI_Win win);
+                         MPI_Aint target_disp, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Compare_and_swap(origin_addr, compare_addr, result_addr, datatype, target_rank, target_disp, win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(1, datatype);
+        plumber_commtype_t offset = COMPSWAP;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 int MPI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
-                   int target_rank, MPI_Aint target_disp, int target_count,
-                   MPI_Datatype target_datatype, MPI_Op op, MPI_Win win);
+                   int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+                   MPI_Op op, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Accumulate(origin_addr, origin_count, origin_datatype,
+                             target_rank, target_disp, target_count, target_datatype,
+                             op, win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = ACC;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 int MPI_Get(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
-            int target_rank, MPI_Aint target_disp, int target_count,
-            MPI_Datatype target_datatype, MPI_Win win);
+            int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+            MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Get(origin_addr, origin_count, origin_datatype,
+                      target_rank, target_disp, target_count, target_datatype,
+                      win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = GET;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 int MPI_Put(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
-            int target_rank, MPI_Aint target_disp, int target_count,
-            MPI_Datatype target_datatype, MPI_Win win);
-int MPI_Get_accumulate(const void *origin_addr, int origin_count,
-                       MPI_Datatype origin_datatype, void *result_addr, int result_count,
-                       MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp,
-                       int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win);
+            int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+            MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Put(origin_addr, origin_count, origin_datatype,
+                      target_rank, target_disp, target_count, target_datatype,
+                      win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = PUT;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Get_accumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                       void *result_addr, int result_count, MPI_Datatype result_datatype,
+                       int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+                       MPI_Op op, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Get_accumulate(origin_addr, origin_count, origin_datatype,
+                                 result_addr, result_count, result_datatype,
+                                 target_rank, target_disp, target_count, target_datatype,
+                                 op, win);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        /* if and only if we are bringing data back do we count the return trip bytes */
+        if (op != MPI_NO_OP) {
+            bytes = PLUMBER_count_dt_to_bytes(result_count, result_datatype);
+        }
+        plumber_commtype_t offset = GETACC;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 #if 0
 int MPI_Rput(const void *origin_addr, int origin_count,
              MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
