@@ -198,7 +198,7 @@ static inline void PLUMBER_add3(uint64_t * o1, double * o2, uint64_t * o3,
 /* replace with more accurate timer if necessary */
 static double PLUMBER_wtime(void)
 {
-    return PMPI_Wtime();
+    return ( plumber_profiling_active ? PMPI_Wtime() : 0.0 );
 }
 
 static void PLUMBER_init(int argc, char** argv, int threading)
