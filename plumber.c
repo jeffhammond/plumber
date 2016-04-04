@@ -500,8 +500,10 @@ int MPI_Barrier(MPI_Comm comm)
     int rc = PMPI_Barrier(comm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[BARRIER] += 1;
-        plumber_utiltype_timer[BARRIER] += (t1-t0);
+        plumber_utiltype_t offset = BARRIER;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
@@ -512,8 +514,10 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     int rc = PMPI_Comm_dup(comm, newcomm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[COMMDUP] += 1;
-        plumber_utiltype_timer[COMMDUP] += (t1-t0);
+        plumber_utiltype_t offset = COMMDUP;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
@@ -524,8 +528,10 @@ int MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm)
     int rc = PMPI_Comm_dup_with_info(comm, info, newcomm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[COMMDUP] += 1;
-        plumber_utiltype_timer[COMMDUP] += (t1-t0);
+        plumber_utiltype_t offset = COMMDUP;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
@@ -536,8 +542,10 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     int rc = PMPI_Comm_create(comm, group, newcomm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[COMMCREATE] += 1;
-        plumber_utiltype_timer[COMMCREATE] += (t1-t0);
+        plumber_utiltype_t offset = COMMCREATE;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
@@ -548,8 +556,10 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     int rc = PMPI_Comm_split(comm, color, key, newcomm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[COMMSPLIT] += 1;
-        plumber_utiltype_timer[COMMSPLIT] += (t1-t0);
+        plumber_utiltype_t offset = COMMSPLIT;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
@@ -560,8 +570,10 @@ int MPI_Comm_free(MPI_Comm *comm)
     int rc = PMPI_Comm_free(comm);
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
-        plumber_utiltype_count[COMMFREE] += 1;
-        plumber_utiltype_timer[COMMFREE] += (t1-t0);
+        plumber_utiltype_t offset = COMMFREE;
+        PLUMBER_add2( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      1, t1-t0);
     }
     return rc;
 }
