@@ -1,4 +1,4 @@
-CC      =  /opt/mpich/dev/clang/default/bin/mpicc
+CC      =  mpicc
 
 # C99 is _required_ to build
 CFLAGS  = -std=c99
