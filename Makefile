@@ -15,7 +15,7 @@ CFLAGS += -Werror
 # enable thread safety
 CFLAGS += -DHAVE_PTHREAD_H
 
-all: plumber.o
+all: plumber.o test attr
 
 plumber.o : plumber.c
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -23,11 +23,15 @@ plumber.o : plumber.c
 test : test.c plumber.o
 	$(CC) $(CFLAGS) $< plumber.o -o $@
 
+attr : attr.c
+	$(CC) -Wall $< -o $@
+
 check: test
 	mpirun -n 4 ./test "bogus" 0 100 "hijinks"
 
 clean:
 	-rm -f plumber.o
 	-rm -f test
-	-rm -rf test.dSYM
+	-rm -f attr
+	-rm -rf *.dSYM
 

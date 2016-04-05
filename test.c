@@ -6,6 +6,9 @@ int main(int argc, char* argv[])
 {
     MPI_Init(&argc, &argv);
 
+    MPI_Comm newcomm;
+    MPI_Comm_dup(MPI_COMM_WORLD, &newcomm);
+
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -27,8 +30,10 @@ int main(int argc, char* argv[])
     free(reqs);
 
     for (int i=0; i<100; i++) {
-        MPI_Barrier(MPI_COMM_WORLD);
+        MPI_Barrier(newcomm);
     }
+
+    MPI_Comm_free(&newcomm);
 
     MPI_Finalize();
     return 0;
