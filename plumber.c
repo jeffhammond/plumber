@@ -76,8 +76,12 @@ typedef enum {
     GET           = 37,
     PUT           = 38,
     GETACC        = 39,
+    RACC          = 40,
+    RGET          = 41,
+    RPUT          = 42,
+    RGETACC       = 43,
     /* the end */
-    MAX_COMMTYPE  = 40
+    MAX_COMMTYPE  = 44
 } plumber_commtype_t;
 
 char plumber_commtype_names[MAX_COMMTYPE][32] = {
@@ -1683,25 +1687,124 @@ int MPI_Get_accumulate(const void *origin_addr, int origin_count, MPI_Datatype o
     return rc;
 }
 
-#if 0
-int MPI_Rput(const void *origin_addr, int origin_count,
-             MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-             int target_count, MPI_Datatype target_datatype, MPI_Win win,
-             MPI_Request *request);
-int MPI_Rget(void *origin_addr, int origin_count,
-             MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-             int target_count, MPI_Datatype target_datatype, MPI_Win win,
-             MPI_Request *request);
-int MPI_Raccumulate(const void *origin_addr, int origin_count,
-                    MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-                    int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win,
-                    MPI_Request *request);
+int MPI_Raccumulate(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+                    int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+                    MPI_Op op, MPI_Win win, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Raccumulate(origin_addr, origin_count, origin_datatype,
+                              target_rank, target_disp, target_count, target_datatype,
+                              op, win, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = RACC;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Rput(const void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+             int target_rank, MPI_Aint target_disp, int target_count, MPI_Datatype target_datatype,
+             MPI_Win win, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Rput(origin_addr, origin_count, origin_datatype,
+                       target_rank, target_disp, target_count, target_datatype,
+                       win, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = RPUT;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
+int MPI_Rget(void *origin_addr, int origin_count, MPI_Datatype origin_datatype,
+             int target_rank, MPI_Aint target_disp, int target_count,
+             MPI_Datatype target_datatype, MPI_Win win, MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Rget(origin_addr, origin_count, origin_datatype,
+                       target_rank, target_disp, target_count, target_datatype,
+                       win, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        plumber_commtype_t offset = RGET;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
+
 int MPI_Rget_accumulate(const void *origin_addr, int origin_count,
                         MPI_Datatype origin_datatype, void *result_addr, int result_count,
                         MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp,
                         int target_count, MPI_Datatype target_datatype, MPI_Op op, MPI_Win win,
-                        MPI_Request *request);
-#endif
+                        MPI_Request *request)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Rget_accumulate(origin_addr, origin_count, origin_datatype,
+                                  result_addr, result_count, result_datatype,
+                                  target_rank, target_disp, target_count, target_datatype,
+                                  op, win, request);
+    double t1 = PLUMBER_wtime();
+
+    if (plumber_profiling_active) {
+        size_t bytes = PLUMBER_count_dt_to_bytes(origin_count, origin_datatype);
+        /* if and only if we are bringing data back do we count the return trip bytes */
+        if (op != MPI_NO_OP) {
+            bytes = PLUMBER_count_dt_to_bytes(result_count, result_datatype);
+        }
+        plumber_commtype_t offset = RGETACC;
+        PLUMBER_add3( &plumber_commtype_count[offset],
+                      &plumber_commtype_timer[offset],
+                      &plumber_commtype_bytes[offset],
+                      1, t1-t0, bytes);
+
+        if (plumber_rmamatrix_active) {
+            plumber_rmamatrix_count[target_rank] += 1;
+            plumber_rmamatrix_timer[target_rank] += (t1-t0);
+            plumber_rmamatrix_bytes[target_rank] += bytes;
+        }
+    }
+
+    return rc;
+}
 
 /* BSP */
 int MPI_Win_fence(int assert, MPI_Win win)
