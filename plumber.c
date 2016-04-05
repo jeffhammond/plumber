@@ -84,94 +84,120 @@ typedef enum {
     MAX_COMMTYPE  = 44
 } plumber_commtype_t;
 
-char plumber_commtype_names[MAX_COMMTYPE][32] = {
-"MPI_Send",
-"MPI_Bsend",
-"MPI_Ssend",
-"MPI_Rsend",
-"MPI_Isend",
-"MPI_Ibsend",
-"MPI_Issend",
-"MPI_Irsend",
-"MPI_Recv",
-"MPI_Irecv",
-"MPI_Mrecv",
-"MPI_Imrecv",
-"MPI_Bcast",
-"MPI_Reduce",
-"MPI_Allreduce",
-"MPI_Alltoall",
-"MPI_Alltoallv",
-"MPI_Gather",
-"MPI_Allgather",
-"MPI_Scatter",
-"MPI_Gatherv",
-"MPI_Allgatherv",
-"MPI_Scatterv",
-"MPI_Reduce_scatter",
-"MPI_Reduce_scatter_block",
-"MPI_Alltoallw",
-"MPI_Fetch_and_op",
-"MPI_Compare_and_swap",
-"MPI_Accumulate",
-"MPI_Get",
-"MPI_Put",
-"MPI_Get_accumulate"
+char plumber_commtype_names[MAX_COMMTYPE][21] = {
+"Send",
+"Bsend",
+"Ssend",
+"Rsend",
+"Isend",
+"Ibsend",
+"Issend",
+"Irsend",
+"Recv",
+"Irecv",
+"Mrecv",
+"Imrecv",
+"Bcast",
+"Reduce",
+"Allreduce",
+"Alltoall",
+"Alltoallv",
+"Gather",
+"Allgather",
+"Scatter",
+"Gatherv",
+"Allgatherv",
+"Scatterv",
+"Reduce_scatter",
+"Reduce_scatter_block",
+"Alltoallw",
+"Fetch_and_op",
+"Compare_and_swap",
+"Accumulate",
+"Get",
+"Put",
+"Get_accumulate"
 };
 
 typedef enum {
     /* request completion */
-    WAIT          = 0,
-    WAITANY       = 1,
-    WAITSOME      = 2,
-    WAITALL       = 3,
-    TEST          = 4,
-    TESTANY       = 5,
-    TESTSOME      = 6,
-    TESTALL       = 7,
+    WAIT             = 0,
+    WAITANY          = 1,
+    WAITSOME         = 2,
+    WAITALL          = 3,
+    TEST             = 4,
+    TESTANY          = 5,
+    TESTSOME         = 6,
+    TESTALL          = 7,
     /* collectives */
-    BARRIER       = 8,
-    COMMDUP       = 9,
-    COMMCREATE    = 10,
-    COMMSPLIT     = 11,
-    COMMFREE      = 12,
+    BARRIER          = 8,
+    COMMDUP          = 9,
+    COMMCREATE       = 10,
+    COMMSPLIT        = 11,
+    COMMFREE         = 12,
     /* RMA */
-    WINCREATE     = 13,
-    WINALLOC      = 14,
-    WINALLOCSH    = 15,
-    WINCREATEDYN  = 16,
-    WINATTACH     = 17,
-    WINDETACH     = 18,
-    WINFREE       = 19,
-    WINFENCE      = 20,
-    WINSYNC       = 21,
+    WINCREATE        = 13,
+    WINALLOC         = 14,
+    WINALLOCSH       = 15,
+    WINCREATEDYN     = 16,
+    WINATTACH        = 17,
+    WINDETACH        = 18,
+    WINFREE          = 19,
+    WINFENCE         = 20,
+    WINSYNC          = 21,
+    WINLOCK          = 22,
+    WINUNLOCK        = 23,
+    WINLOCKALL       = 24,
+    WINUNLOCKALL     = 25,
+    WINFLUSH         = 27,
+    WINFLUSHALL      = 28,
+    WINFLUSHLOCAL    = 29,
+    WINFLUSHLOCALALL = 30,
+    WINPOST          = 31,
+    WINSTART         = 32,
+    WINCOMPLETE      = 33,
+    WINWAIT          = 34,
+    WINTEST          = 35,
     /* the end */
-    MAX_UTILTYPE  = 22
+    MAX_UTILTYPE     = 36
 } plumber_utiltype_t;
 
-char plumber_utiltype_names[MAX_UTILTYPE][32] = {
-"MPI_Wait",
-"MPI_Waitany",
-"MPI_Waitsome",
-"MPI_Waitall",
-"MPI_Test",
-"MPI_Testany",
-"MPI_Testsome",
-"MPI_Testall",
-"MPI_Barrier",
-"MPI_Comm_dup",
-"MPI_Comm_create",
-"MPI_Comm_split",
-"MPI_Comm_free",
-"MPI_Win_create",
-"MPI_Win_allocate",
-"MPI_Win_allocate_shared",
-"MPI_Win_create_dynamic",
-"MPI_Win_attach",
-"MPI_Win_detach",
-"MPI_Win_free",
-"MPI_Win_fence",
-"MPI_Win_sync"
+char plumber_utiltype_names[MAX_UTILTYPE][20] = {
+"Wait",
+"Waitany",
+"Waitsome",
+"Waitall",
+"Test",
+"Testany",
+"Testsome",
+"Testall",
+"Barrier",
+"Comm_dup",
+"Comm_create",
+"Comm_split",
+"Comm_free",
+"Win_create",
+"Win_allocate",
+"Win_allocate_shared",
+"Win_create_dynamic",
+"Win_attach",
+"Win_detach",
+"Win_free",
+"Win_fence",
+"Win_sync",
+"Win_lock",
+"Win_unlock",
+"Win_lock_all",
+"Win_unlock_all",
+"Win_flush",
+"Win_flush_all",
+"Win_flush_local",
+"Win_flush_local_all",
+"Win_post",
+"Win_start",
+"Win_complete",
+"Win_wait",
+"Win_test"
 };
 
 typedef unsigned long long int myu64_t;
@@ -402,7 +428,7 @@ static void PLUMBER_finalize(int collective)
             fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 if (plumber_commtype_count[i] > 0) {
-                    fprintf(rankfile, "%32s %20llu %30.14lf %20llu\n",
+                    fprintf(rankfile, "MPI_%21s %20llu %30.14lf %20llu\n",
                             plumber_commtype_names[i],
                             plumber_commtype_count[i],
                             plumber_commtype_timer[i],
@@ -411,7 +437,7 @@ static void PLUMBER_finalize(int collective)
             }
             for (int i=0; i<MAX_UTILTYPE; i++) {
                 if (plumber_utiltype_count[i] > 0) {
-                    fprintf(rankfile, "%32s %20llu %30.14lf\n",
+                    fprintf(rankfile, "MPI_%20s %20llu %30.14lf\n",
                             plumber_utiltype_names[i],
                             plumber_utiltype_count[i],
                             plumber_utiltype_timer[i]);
@@ -510,7 +536,7 @@ static void PLUMBER_finalize(int collective)
                     fprintf(rankfile, "%32s %20s %30s %20s\n", "function", "calls", "time", "bytes");
                     for (int i=0; i<MAX_COMMTYPE; i++) {
                         if (total_commtype_count[i] > 0) {
-                            fprintf(rankfile, "%32s %20llu %30.14lf %20llu\n",
+                            fprintf(rankfile, "MPI_%21s %20llu %30.14lf %20llu\n",
                                     plumber_commtype_names[i],
                                     total_commtype_count[i],
                                     total_commtype_timer[i],
@@ -519,7 +545,7 @@ static void PLUMBER_finalize(int collective)
                     }
                     for (int i=0; i<MAX_UTILTYPE; i++) {
                         if (total_utiltype_count[i] > 0) {
-                            fprintf(rankfile, "%32s %20llu %30.14lf\n",
+                            fprintf(rankfile, "MPI_%20s %20llu %30.14lf\n",
                                     plumber_utiltype_names[i],
                                     total_utiltype_count[i],
                                     total_utiltype_timer[i]);
@@ -1836,21 +1862,186 @@ int MPI_Win_sync(MPI_Win win)
     return rc;
 }
 
-int MPI_Win_lock(int lock_type, int rank, int assert, MPI_Win win);
-int MPI_Win_unlock(int rank, MPI_Win win);
-int MPI_Win_lock_all(int assert, MPI_Win win);
-int MPI_Win_unlock_all(MPI_Win win);
-int MPI_Win_flush(int rank, MPI_Win win);
-int MPI_Win_flush_all(MPI_Win win);
-int MPI_Win_flush_local(int rank, MPI_Win win);
-int MPI_Win_flush_local_all(MPI_Win win);
+int MPI_Win_lock(int lock_type, int rank, int assert, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_lock(lock_type, rank, assert, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINLOCK;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
 
-#if 0
+int MPI_Win_unlock(int rank, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_unlock(rank, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINUNLOCK;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_lock_all(int assert, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_lock_all(assert, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINLOCKALL;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_unlock_all(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_unlock_all(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINUNLOCKALL;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_flush(int rank, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_flush(rank, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFLUSH;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_flush_all(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_flush_all(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFLUSHALL;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_flush_local(int rank, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_flush_local(rank, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFLUSHLOCAL;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_flush_local_all(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_flush_local_all(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINFLUSHLOCALALL;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
 /* PSCW */
-int MPI_Win_post(MPI_Group group, int assert, MPI_Win win);
-int MPI_Win_start(MPI_Group group, int assert, MPI_Win win);
-int MPI_Win_complete(MPI_Win win);
-int MPI_Win_wait(MPI_Win win);
-int MPI_Win_test(MPI_Win win, int *flag);
-#endif
+int MPI_Win_post(MPI_Group group, int assert, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_post(group, assert, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINPOST;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_start(MPI_Group group, int assert, MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_start(group, assert, win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINSTART;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_complete(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_complete(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINCOMPLETE;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_wait(MPI_Win win)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_wait(win);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINWAIT;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Win_test(MPI_Win win, int *flag)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Win_test(win, flag);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = WINTEST;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
 
