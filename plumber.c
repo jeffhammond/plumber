@@ -170,38 +170,40 @@ char plumber_utiltype_names[MAX_UTILTYPE][32] = {
 "MPI_Win_sync"
 };
 
-uint64_t plumber_commtype_count[MAX_COMMTYPE];
-double   plumber_commtype_timer[MAX_COMMTYPE];
-uint64_t plumber_commtype_bytes[MAX_COMMTYPE];
+typedef unsigned long long int myu64_t;
 
-uint64_t plumber_utiltype_count[MAX_UTILTYPE];
-double   plumber_utiltype_timer[MAX_UTILTYPE];
+myu64_t plumber_commtype_count[MAX_COMMTYPE];
+double  plumber_commtype_timer[MAX_COMMTYPE];
+myu64_t plumber_commtype_bytes[MAX_COMMTYPE];
 
-/* dynamically allocated due to O(nproc) */
-uint64_t * plumber_p2pmatrix_count;
-double   * plumber_p2pmatrix_timer;
-uint64_t * plumber_p2pmatrix_bytes;
+myu64_t plumber_utiltype_count[MAX_UTILTYPE];
+double  plumber_utiltype_timer[MAX_UTILTYPE];
 
 /* dynamically allocated due to O(nproc) */
-uint64_t * plumber_rmamatrix_count;
-double   * plumber_rmamatrix_timer;
-uint64_t * plumber_rmamatrix_bytes;
+myu64_t * plumber_p2pmatrix_count;
+double  * plumber_p2pmatrix_timer;
+myu64_t * plumber_p2pmatrix_bytes;
+
+/* dynamically allocated due to O(nproc) */
+myu64_t * plumber_rmamatrix_count;
+double  * plumber_rmamatrix_timer;
+myu64_t * plumber_rmamatrix_bytes;
 
 /* time from the end of PLUMBER_init to capture application time */
 double plumber_start_time;
 
 /* this is the state used for profiling on user-defined communicators */
 typedef struct {
-    uint64_t commtype_count[MAX_COMMTYPE];
-    double   commtype_timer[MAX_COMMTYPE];
-    uint64_t commtype_bytes[MAX_COMMTYPE];
+    myu64_t commtype_count[MAX_COMMTYPE];
+    double  commtype_timer[MAX_COMMTYPE];
+    myu64_t commtype_bytes[MAX_COMMTYPE];
 
-    uint64_t utiltype_count[MAX_UTILTYPE];
-    double   utiltype_timer[MAX_UTILTYPE];
+    myu64_t utiltype_count[MAX_UTILTYPE];
+    double  utiltype_timer[MAX_UTILTYPE];
 
-    uint64_t * p2pmatrix_count;
-    double   * p2pmatrix_timer;
-    uint64_t * p2pmatrix_bytes;
+    myu64_t * p2pmatrix_count;
+    double  * p2pmatrix_timer;
+    myu64_t * p2pmatrix_bytes;
 
     double start_time;
 } plumber_usercomm_data_t;
@@ -210,8 +212,8 @@ typedef struct {
  * internal functions
  ********************************************/
 
-static inline void PLUMBER_add2(uint64_t * o1, double * o2,
-                                uint64_t   i1, double   i2)
+static inline void PLUMBER_add2(myu64_t * o1, double * o2,
+                                myu64_t   i1, double   i2)
 {
     if (plumber_multithreaded) plumber_mutex_lock(&plumber_mutex);
     {
@@ -221,8 +223,8 @@ static inline void PLUMBER_add2(uint64_t * o1, double * o2,
     if (plumber_multithreaded) plumber_mutex_unlock(&plumber_mutex);
 }
 
-static inline void PLUMBER_add3(uint64_t * o1, double * o2, uint64_t * o3,
-                                uint64_t   i1, double   i2, double     i3)
+static inline void PLUMBER_add3(myu64_t * o1, double * o2, myu64_t * o3,
+                                myu64_t   i1, double   i2, double     i3)
 {
     if (plumber_multithreaded) plumber_mutex_lock(&plumber_mutex);
     {
@@ -272,9 +274,9 @@ static void PLUMBER_init(int argc, char** argv, int threading)
             int size;
             PMPI_Comm_size(MPI_COMM_WORLD, &size);
 
-            plumber_p2pmatrix_count = malloc(size * sizeof(uint64_t));
+            plumber_p2pmatrix_count = malloc(size * sizeof(myu64_t));
             plumber_p2pmatrix_timer = malloc(size * sizeof(double));
-            plumber_p2pmatrix_bytes = malloc(size * sizeof(uint64_t));
+            plumber_p2pmatrix_bytes = malloc(size * sizeof(myu64_t));
 
             if (plumber_p2pmatrix_count == NULL || plumber_p2pmatrix_timer == NULL || plumber_p2pmatrix_bytes == NULL) {
                 fprintf(stderr, "PLUMBER: p2pmatrix memory allocation did not succeed for %d processes\n", size);
@@ -293,9 +295,9 @@ static void PLUMBER_init(int argc, char** argv, int threading)
             int size;
             PMPI_Comm_size(MPI_COMM_WORLD, &size);
 
-            plumber_rmamatrix_count = malloc(size * sizeof(uint64_t));
+            plumber_rmamatrix_count = malloc(size * sizeof(myu64_t));
             plumber_rmamatrix_timer = malloc(size * sizeof(double));
-            plumber_rmamatrix_bytes = malloc(size * sizeof(uint64_t));
+            plumber_rmamatrix_bytes = malloc(size * sizeof(myu64_t));
 
             if (plumber_rmamatrix_count == NULL || plumber_rmamatrix_timer == NULL || plumber_rmamatrix_bytes == NULL) {
                 fprintf(stderr, "PLUMBER: rmamatrix memory allocation did not succeed for %d processes\n", size);
@@ -467,10 +469,10 @@ static void PLUMBER_finalize(int collective)
 
         if (collective) {
             /* reduce to get totals */
-            uint64_t total_commtype_count[MAX_COMMTYPE];
+            myu64_t total_commtype_count[MAX_COMMTYPE];
             double   total_commtype_timer[MAX_COMMTYPE];
-            uint64_t total_commtype_bytes[MAX_COMMTYPE];
-            uint64_t total_utiltype_count[MAX_UTILTYPE];
+            myu64_t total_commtype_bytes[MAX_COMMTYPE];
+            myu64_t total_utiltype_count[MAX_UTILTYPE];
             double   total_utiltype_timer[MAX_UTILTYPE];
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 PMPI_Reduce(&(plumber_commtype_count[i]), &(total_commtype_count[i]),
