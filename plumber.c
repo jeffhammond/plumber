@@ -120,7 +120,6 @@ char plumber_commtype_names[MAX_COMMTYPE][21] = {
 };
 
 typedef enum {
-    /* request completion */
     WAIT             = 0,
     WAITANY          = 1,
     WAITSOME         = 2,
@@ -129,37 +128,36 @@ typedef enum {
     TESTANY          = 5,
     TESTSOME         = 6,
     TESTALL          = 7,
-    /* collectives */
     BARRIER          = 8,
     COMMDUP          = 9,
     COMMCREATE       = 10,
     COMMSPLIT        = 11,
-    COMMFREE         = 12,
-    /* RMA */
-    WINCREATE        = 13,
-    WINALLOC         = 14,
-    WINALLOCSH       = 15,
-    WINCREATEDYN     = 16,
-    WINATTACH        = 17,
-    WINDETACH        = 18,
-    WINFREE          = 19,
-    WINFENCE         = 20,
-    WINSYNC          = 21,
-    WINLOCK          = 22,
-    WINUNLOCK        = 23,
-    WINLOCKALL       = 24,
-    WINUNLOCKALL     = 25,
-    WINFLUSH         = 27,
-    WINFLUSHALL      = 28,
-    WINFLUSHLOCAL    = 29,
-    WINFLUSHLOCALALL = 30,
-    WINPOST          = 31,
-    WINSTART         = 32,
-    WINCOMPLETE      = 33,
-    WINWAIT          = 34,
-    WINTEST          = 35,
+    COMMSPLITTYPE    = 12,
+    COMMFREE         = 13,
+    WINCREATE        = 14,
+    WINALLOC         = 15,
+    WINALLOCSH       = 16,
+    WINCREATEDYN     = 17,
+    WINATTACH        = 18,
+    WINDETACH        = 19,
+    WINFREE          = 20,
+    WINFENCE         = 21,
+    WINSYNC          = 22,
+    WINLOCK          = 23,
+    WINUNLOCK        = 24,
+    WINLOCKALL       = 25,
+    WINUNLOCKALL     = 27,
+    WINFLUSH         = 28,
+    WINFLUSHALL      = 29,
+    WINFLUSHLOCAL    = 30,
+    WINFLUSHLOCALALL = 31,
+    WINPOST          = 32,
+    WINSTART         = 33,
+    WINCOMPLETE      = 34,
+    WINWAIT          = 35,
+    WINTEST          = 36,
     /* the end */
-    MAX_UTILTYPE     = 36
+    MAX_UTILTYPE     = 37
 } plumber_utiltype_t;
 
 char plumber_utiltype_names[MAX_UTILTYPE][20] = {
@@ -175,6 +173,7 @@ char plumber_utiltype_names[MAX_UTILTYPE][20] = {
 "Comm_dup",
 "Comm_create",
 "Comm_split",
+"Comm_split_type",
 "Comm_free",
 "Win_create",
 "Win_allocate",
@@ -665,6 +664,20 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     double t1 = PLUMBER_wtime();
     if (plumber_profiling_active) {
         plumber_utiltype_t offset = COMMCREATE;
+        PLUMBER_add2( &plumber_utiltype_count[offset],
+                      &plumber_utiltype_timer[offset],
+                      1, t1-t0);
+    }
+    return rc;
+}
+
+int MPI_Comm_split_type(MPI_Comm comm, int split_type, int key, MPI_Info info, MPI_Comm *newcomm)
+{
+    double t0 = PLUMBER_wtime();
+    int rc = PMPI_Comm_split_type(comm, split_type, key, info, newcomm);
+    double t1 = PLUMBER_wtime();
+    if (plumber_profiling_active) {
+        plumber_utiltype_t offset = COMMSPLITTYPE;
         PLUMBER_add2( &plumber_utiltype_count[offset],
                       &plumber_utiltype_timer[offset],
                       1, t1-t0);
