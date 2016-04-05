@@ -342,7 +342,7 @@ static int PLUMBER_finalize_comm_matrix(MPI_Comm comm, myu64_t * count, double *
         PMPI_Comm_get_name(comm, name, &len);
 
         fprintf(file, "PLUMBER %s matrix for process %d\n", matrix_name, rank);
-        fprintf(file, "subcommunicator size = %d, name = %s\n", size, name);
+        fprintf(file, "communicator size = %d, name = %s\n", size, name);
         fprintf(file, "%10s %10s %30s %20s\n", "target", "calls", "time", "bytes");
         for (int i=0; i<size; i++) {
             if (count[i] > 0) {
