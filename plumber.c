@@ -1252,6 +1252,31 @@ int MPI_Alltoallw(const void *sendbuf, const int sendcounts[], const int sdispls
 
 /* point-to-point communication */
 
+static void PLUMBER_p2p_capture(plumber_commtype_t offset, double dt,
+                                int count, MPI_Datatype datatype, int dest, MPI_Comm comm)
+{
+    size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
+    PLUMBER_add3( &plumber_commtype_count[offset],
+                  &plumber_commtype_timer[offset],
+                  &plumber_commtype_bytes[offset],
+                  1, dt, bytes);
+
+    if (plumber_p2pmatrix_active) {
+        plumber_p2pmatrix_count[dest] += 1;
+        plumber_p2pmatrix_timer[dest] += dt;
+        plumber_p2pmatrix_bytes[dest] += bytes;
+    }
+
+    if (plumber_subcomm_profiling) {
+        int flag;
+        plumber_usercomm_data_t * ptr;
+        PMPI_Comm_get_attr(comm, plumber_comm_keyval, &ptr, &flag);
+        if (!flag) {
+            fprintf(stderr, "PMPI_Comm_get_attr flag=%d\n", flag);
+        }
+    }
+}
+
 int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag, MPI_Comm comm)
 {
     double t0 = PLUMBER_wtime();
@@ -1259,18 +1284,7 @@ int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int ta
     double t1 = PLUMBER_wtime();
 
     if (plumber_profiling_active) {
-        size_t bytes = PLUMBER_count_dt_to_bytes(count, datatype);
-        plumber_commtype_t offset = SEND;
-        PLUMBER_add3( &plumber_commtype_count[offset],
-                      &plumber_commtype_timer[offset],
-                      &plumber_commtype_bytes[offset],
-                      1, t1-t0, bytes);
-
-        if (plumber_p2pmatrix_active) {
-            plumber_p2pmatrix_count[dest] += 1;
-            plumber_p2pmatrix_timer[dest] += (t1-t0);
-            plumber_p2pmatrix_bytes[dest] += bytes;
-        }
+        PLUMBER_p2p_capture(SEND, t1-t0, count, datatype, dest, comm);
     }
 
     return rc;
