@@ -13,6 +13,12 @@
 
 #include <mpi.h>
 
+#define MPI_THREAD_STRING(level)  \
+    ( level==MPI_THREAD_SERIALIZED ? "THREAD_SERIALIZED" : \
+      ( level==MPI_THREAD_MULTIPLE ? "THREAD_MULTIPLE" : \
+        ( level==MPI_THREAD_FUNNELED ? "THREAD_FUNNELED" : \
+          ( level==MPI_THREAD_SINGLE ? "THREAD_SINGLE" : "THREAD_UNKNOWN" ) ) ) )
+
 /* because i do not know how to use fixed-width
  * printf with PRIu64 */
 typedef unsigned long long int myu64_t;
@@ -433,11 +439,33 @@ static void PLUMBER_finalize(int collective)
     if (plumber_profiling_active) {
 
         double plumber_end_time = PLUMBER_wtime();
-        double plumber_app_time = plumber_end_time - plumber_start_time;
 
         int rank, size;
         PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
         PMPI_Comm_size(MPI_COMM_WORLD, &size);
+
+        double plumber_app_time = plumber_end_time - plumber_start_time;
+        double plumber_mpi_time = 0.0;
+        for (int i=0; i<MAX_COMMTYPE; i++) {
+            plumber_mpi_time += plumber_commtype_timer[i];
+        }
+        for (int i=0; i<MAX_UTILTYPE; i++) {
+            plumber_mpi_time += plumber_utiltype_timer[i];
+        }
+
+        double plumber_app_time_min_max_avg[3];
+        double plumber_mpi_time_min_max_avg[3];
+        if (collective) {
+            PMPI_Reduce(&plumber_app_time, &(plumber_app_time_min_max_avg[0]), 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+            PMPI_Reduce(&plumber_app_time, &(plumber_app_time_min_max_avg[1]), 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+            PMPI_Reduce(&plumber_app_time, &(plumber_app_time_min_max_avg[2]), 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+            plumber_app_time_min_max_avg[2] /= size;
+
+            PMPI_Reduce(&plumber_mpi_time, &(plumber_mpi_time_min_max_avg[0]), 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+            PMPI_Reduce(&plumber_mpi_time, &(plumber_mpi_time_min_max_avg[1]), 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+            PMPI_Reduce(&plumber_mpi_time, &(plumber_mpi_time_min_max_avg[2]), 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+            plumber_mpi_time_min_max_avg[2] /= size;
+        }
 
         char summaryfilepath[256];
         char rankfilepath[256];
@@ -493,33 +521,30 @@ static void PLUMBER_finalize(int collective)
             MPI_Get_processor_name(procname, &len);
             fprintf(rankfile, "MPI_Get_processor_name = %s\n", procname);
             /* application stats */
-            fprintf(rankfile, "total application time = %lf\n", plumber_app_time);
-            double plumber_total_mpi_time = 0.0;
-            for (int i=0; i<MAX_COMMTYPE; i++) {
-                plumber_total_mpi_time += plumber_commtype_timer[i];
-            }
-            for (int i=0; i<MAX_UTILTYPE; i++) {
-                plumber_total_mpi_time += plumber_utiltype_timer[i];
-            }
+            fprintf(rankfile, "total application time = %lf (my rank)\n", plumber_app_time);
             fprintf(rankfile, "total MPI time = %lf (%6.2lf percent)\n",
-                              plumber_total_mpi_time,
-                              100.*plumber_total_mpi_time/plumber_app_time);
+                              plumber_mpi_time,
+                              100.*plumber_mpi_time/plumber_app_time);
             /* MPI profile */
             fprintf(rankfile, "%22s %20s %30s %20s\n", "function", "calls", "time", "bytes");
             for (int i=0; i<MAX_COMMTYPE; i++) {
                 if (plumber_commtype_count[i] > 0) {
-                    fprintf(rankfile, "%22s %20llu %30.14lf %20llu\n",
+                    fprintf(rankfile, "%22s %20llu %30.14lf %30.14lf %30.14lf %20llu\n",
                             plumber_commtype_names[i],
                             plumber_commtype_count[i],
+                            plumber_commtype_timer[i],
+                            plumber_commtype_timer[i],
                             plumber_commtype_timer[i],
                             plumber_commtype_bytes[i]);
                 }
             }
             for (int i=0; i<MAX_UTILTYPE; i++) {
                 if (plumber_utiltype_count[i] > 0) {
-                    fprintf(rankfile, "%22s %20llu %30.14lf\n",
+                    fprintf(rankfile, "%22s %20llu %30.14lf %30.14lf %30.14lf\n",
                             plumber_utiltype_names[i],
                             plumber_utiltype_count[i],
+                            plumber_utiltype_timer[i],
+                            plumber_utiltype_timer[i],
                             plumber_utiltype_timer[i]);
                 }
             }
@@ -572,12 +597,26 @@ static void PLUMBER_finalize(int collective)
                     fprintf(stderr, "PLUMBER: fopen of summaryfile %s did not succeed\n", summaryfilepath);
                 } else {
                     fprintf(summaryfile, "PLUMBER summary\n");
+                    /* basic job info */
+                    fprintf(rankfile, "Number of MPI processes: %d\n", size);
+                    int threading;
+                    MPI_Query_thread(&threading);
+                    fprintf(rankfile, "Thread level: %s\n", MPI_THREAD_STRING(threading) );
                     /* program invocation */
                     fprintf(summaryfile, "program invocation was:");
                     for (int i=0; i<plumber_argc; i++) {
                         fprintf(summaryfile, " %s", plumber_argv[i]);
                     }
                     fprintf(summaryfile, "\n");
+                    /* timing data */
+                    fprintf(rankfile, "total App time = %lf (rank 0)\n", plumber_app_time);
+                    fprintf(rankfile, "total App time = %lf (min.)\n",   plumber_app_time_min_max_avg[0]);
+                    fprintf(rankfile, "total App time = %lf (max.)\n",   plumber_app_time_min_max_avg[1]);
+                    fprintf(rankfile, "total App time = %lf (avg.)\n",   plumber_app_time_min_max_avg[2]);
+                    fprintf(rankfile, "total MPI time = %lf (rank 0)\n", plumber_mpi_time);
+                    fprintf(rankfile, "total MPI time = %lf (min.)\n",   plumber_mpi_time_min_max_avg[0]);
+                    fprintf(rankfile, "total MPI time = %lf (max.)\n",   plumber_mpi_time_min_max_avg[1]);
+                    fprintf(rankfile, "total MPI time = %lf (avg.)\n",   plumber_mpi_time_min_max_avg[2]);
                     /* aggregrate MPI profile */
                     fprintf(rankfile, "%22s %20s %30s %20s\n", "function", "calls", "time", "bytes");
                     for (int i=0; i<MAX_COMMTYPE; i++) {
