@@ -1530,7 +1530,7 @@ int MPI_Imrecv(void *buf, int count, MPI_Datatype datatype, MPI_Message *message
     return rc;
 }
 
-int PMPI_Wait(MPI_Request *request, MPI_Status *status)
+int MPI_Wait(MPI_Request *request, MPI_Status *status)
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Wait(request, status);
@@ -1546,7 +1546,7 @@ int PMPI_Wait(MPI_Request *request, MPI_Status *status)
     return rc;
 }
 
-int PMPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
+int MPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Test(request, flag, status);
@@ -1562,7 +1562,7 @@ int PMPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
     return rc;
 }
 
-int PMPI_Waitany(int count, MPI_Request requests[], int *index, MPI_Status *status)
+int MPI_Waitany(int count, MPI_Request requests[], int *index, MPI_Status *status)
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Waitany(count, requests, index, status);
@@ -1578,7 +1578,7 @@ int PMPI_Waitany(int count, MPI_Request requests[], int *index, MPI_Status *stat
     return rc;
 }
 
-int PMPI_Testany(int count, MPI_Request requests[], int *index, int *flag, MPI_Status *status)
+int MPI_Testany(int count, MPI_Request requests[], int *index, int *flag, MPI_Status *status)
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Testany(count, requests, index, flag, status);
@@ -1594,7 +1594,7 @@ int PMPI_Testany(int count, MPI_Request requests[], int *index, int *flag, MPI_S
     return rc;
 }
 
-int PMPI_Waitall(int count, MPI_Request requests[], MPI_Status statuses[])
+int MPI_Waitall(int count, MPI_Request requests[], MPI_Status statuses[])
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Waitall(count, requests, statuses);
@@ -1610,7 +1610,7 @@ int PMPI_Waitall(int count, MPI_Request requests[], MPI_Status statuses[])
     return rc;
 }
 
-int PMPI_Testall(int count, MPI_Request requests[], int *flag, MPI_Status statuses[])
+int MPI_Testall(int count, MPI_Request requests[], int *flag, MPI_Status statuses[])
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Testall(count, requests, flag, statuses);
@@ -1626,7 +1626,7 @@ int PMPI_Testall(int count, MPI_Request requests[], int *flag, MPI_Status status
     return rc;
 }
 
-int PMPI_Waitsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
+int MPI_Waitsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Waitsome(incount, requests, outcount, indices, statuses);
@@ -1642,7 +1642,7 @@ int PMPI_Waitsome(int incount, MPI_Request requests[], int *outcount, int indice
     return rc;
 }
 
-int PMPI_Testsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
+int MPI_Testsome(int incount, MPI_Request requests[], int *outcount, int indices[], MPI_Status statuses[])
 {
     double t0 = PLUMBER_wtime();
     int rc = PMPI_Testsome(incount, requests, outcount, indices, statuses);
